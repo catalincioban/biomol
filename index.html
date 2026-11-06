@@ -45,11 +45,19 @@ const TXT = {
     reset:'Resetează', recenter:'Adu aici', spin:'Rotire', ready:'Gata',
     xrAR:'Intră în AR', xrVR:'Intră în VR', xrNo:'AR disponibil pe Magic Leap 2 (WebXR)',
     hint:'Mouse: stânga = rotește, dreapta = mută, rotiță = zoom. Click pe un atom (fără să tragi) = folosește unealta aleasă.',
-    help:'Bumper (butonul lateral): ține apăsat ca să apuci molecula. Touchpad: sus/jos = mărire, stânga/dreapta = rotire. Cu mâinile: prinde (pinch).',
+    help:'Bumper: ține apăsat ca să apuci molecula (sau meniul, dacă țintești spre el). Touchpad: sus/jos = mărire, stânga/dreapta = rotire. Cu mâinile: apasă butoanele cu degetul, prinde (pinch) ca să apuci.',
     chain:'lanț', atom:'atom', protein:'proteină', nucleic:'acid nucleic', ligand:'ligand', ion:'ion', water:'apă',
     hydrophobic:'hidrofob', polar:'polar', basic:'bazic (+)', acidic:'acid (−)',
     atoms:'atomi', residues:'resturi', chains:'lanțuri', offline:'(merge și fără internet)',
-    about:'BioMol AR · structuri din RCSB PDB (rcsb.org)',
+    about:'BioMol AR · structuri din RCSB PDB (rcsb.org)', moveMenu:'Trage ca să muți meniul',
+    tabGroup:'Grup', grpTitle:'Lucru în grup', grpIntro:'Profesorul creează o sesiune și primește un cod din 4 cifre. Studenții introduc codul și văd pe căștile lor aceeași moleculă, aceeași lecție, aceeași orientare și punctul pe care îl indică profesorul cu raza.',
+    grpTeacher:'Sunt profesor', grpTeacherSub:'creez o sesiune nouă', grpStudent:'Sunt student', grpStudentSub:'intru cu un cod', grpConnecting:'Se conectează…',
+    grpErr:'Nu m-am putut conecta la serverul de sincronizare. Verifică internetul (unele rețele Wi-Fi blochează conexiunea).', retry:'Încearcă din nou',
+    grpCode:'Codul sesiunii', grpStudents:'Studenți conectați: {n}', grpTeacherInfo:'Tot ce faci se vede la studenți: molecula, lecția, afișarea, rotirea, mărirea și atomul pe care îl țintești.',
+    grpEnd:'Încheie sesiunea', grpRoom:'Introdu codul primit de la profesor', join:'Intră', grpSession:'Sesiunea {c}',
+    grpTeacherOn:'Profesorul este conectat', grpTeacherOff:'Se așteaptă profesorul…', grpFollow:'Urmăresc profesorul', grpLeave:'Ieși din sesiune',
+    grpFollowInfo:'Când urmărești profesorul, molecula ta se schimbă odată cu a lui. Oprește urmărirea ca să explorezi singur.', teacher:'Profesor', grpBadCode:'Cod invalid',
+    guideBtn:'Ghid de utilizare', guideDesk:'Ghidul pornește în AR, pe căști.', guideTitle:'Ghid', skipGuide:'Sari peste ghid', skipStep:'Sari pasul', close:'Închide', bravo:'✓ Bravo!',
   },
   en: {
     tabMol:'Molecules', tabView:'Display', tabTools:'Tools', tabLearn:'Lessons',
@@ -65,11 +73,19 @@ const TXT = {
     reset:'Reset', recenter:'Bring here', spin:'Spin', ready:'Ready',
     xrAR:'Enter AR', xrVR:'Enter VR', xrNo:'AR available on Magic Leap 2 (WebXR)',
     hint:'Mouse: left = rotate, right = pan, wheel = zoom. Click an atom (without dragging) = use the selected tool.',
-    help:'Bumper (side button): hold to grab the molecule. Touchpad: up/down = scale, left/right = rotate. With hands: pinch.',
+    help:'Bumper: hold to grab the molecule (or the menu, if you point at it). Touchpad: up/down = scale, left/right = rotate. With hands: press buttons with your finger, pinch to grab.',
     chain:'chain', atom:'atom', protein:'protein', nucleic:'nucleic acid', ligand:'ligand', ion:'ion', water:'water',
     hydrophobic:'hydrophobic', polar:'polar', basic:'basic (+)', acidic:'acidic (−)',
     atoms:'atoms', residues:'residues', chains:'chains', offline:'(works offline)',
-    about:'BioMol AR · structures from RCSB PDB (rcsb.org)',
+    about:'BioMol AR · structures from RCSB PDB (rcsb.org)', moveMenu:'Drag to move the menu',
+    tabGroup:'Group', grpTitle:'Group work', grpIntro:'The teacher creates a session and gets a 4-digit code. Students enter the code and see on their headsets the same molecule, the same lesson, the same orientation and the spot the teacher points at.',
+    grpTeacher:'I am the teacher', grpTeacherSub:'create a new session', grpStudent:'I am a student', grpStudentSub:'join with a code', grpConnecting:'Connecting…',
+    grpErr:'Could not connect to the sync server. Check the internet connection (some Wi-Fi networks block it).', retry:'Try again',
+    grpCode:'Session code', grpStudents:'Students connected: {n}', grpTeacherInfo:'Everything you do is shown to students: molecule, lesson, display, rotation, zoom and the atom you point at.',
+    grpEnd:'End session', grpRoom:'Enter the code from your teacher', join:'Join', grpSession:'Session {c}',
+    grpTeacherOn:'Teacher is connected', grpTeacherOff:'Waiting for the teacher…', grpFollow:'Follow the teacher', grpLeave:'Leave session',
+    grpFollowInfo:'While following, your molecule changes with the teacher’s. Turn following off to explore on your own.', teacher:'Teacher', grpBadCode:'Invalid code',
+    guideBtn:'User guide', guideDesk:'The guide runs in AR, on the headset.', guideTitle:'Guide', skipGuide:'Skip guide', skipStep:'Skip step', close:'Close', bravo:'✓ Well done!',
   }
 };
 const t = (k, o) => { let s = (TXT[LANG][k] ?? k); if (o) for (const q in o) s = s.replace('{' + q + '}', o[q]); return s; };
@@ -340,6 +356,7 @@ const molRoot = new THREE.Group(); scene.add(molRoot);       // grabbed / moved 
 const scaler = new THREE.Group(); molRoot.add(scaler);        // Å -> meters
 const inner = new THREE.Group(); scaler.add(inner);           // pivot offset (Å)
 const reps = new THREE.Group(); inner.add(reps);
+const overlay = new THREE.Group(); inner.add(overlay);       // labels, measurements, selection
 
 /* ============================== state ============================== */
 const S = { mode:'cartoon', color:'chain', water:false, hyd:false, lig:true, side:false, tool:'grab', spin:false, userZoom:1 };
@@ -357,7 +374,8 @@ let loadToken = 0;
 
 /* ============================== representation ============================== */
 const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3(), tmpS = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
-const matStd = () => new THREE.MeshStandardMaterial({ roughness: 0.42, metalness: 0.05 });
+const matStd = () => new THREE.MeshLambertMaterial();
+const cartoonMat = new THREE.MeshLambertMaterial({ vertexColors: true });
 const DIM_C = new THREE.Color(0x1a2230);
 
 function lerpHex(hex, dim) { const c = new THREE.Color(hex); if (dim) c.lerp(DIM_C, 0.9); return c; }
@@ -410,14 +428,14 @@ function atomRadius(a) {
   return a.el === 'H' ? 0.18 : (mol.small ? 0.34 : 0.3);
 }
 
-function disposeGroup(gp) { gp.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); gp.clear(); }
+function disposeGroup(gp) { gp.traverse(o => { if (o.geometry && !o.userData.keepGeo) o.geometry.dispose(); if (o.material && o.material !== cartoonMat) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); gp.clear(); }
 
 function rebuild() {
-  disposeGroup(reps); atomMeshes = []; cartoonMeshes = []; labelSprites = [];
-  if (!mol) { drawPanel(); return; }
+  disposeGroup(reps); atomMeshes = []; cartoonMeshes = [];
+  if (!mol) { disposeGroup(overlay); drawPanel(); return; }
   computeStyles();
   const vis = mol.atoms.filter(a => a.style !== 'none');
-  const nAll = vis.length; const seg = nAll < 1500 ? [28, 18] : nAll < 7000 ? [16, 11] : [10, 7];
+  const nAll = vis.length; const seg = nAll < 1500 ? [20, 14] : nAll < 7000 ? [12, 9] : [8, 6];
   if (vis.length) {
     const geo = new THREE.SphereGeometry(1, seg[0], seg[1]);
     const im = new THREE.InstancedMesh(geo, matStd(), vis.length); const map = [];
@@ -460,9 +478,10 @@ function rebuild() {
     im.count = k; im.instanceMatrix.needsUpdate = true; im.instanceColor.needsUpdate = true; reps.add(im);
   }
   if (S.mode === 'cartoon') buildCartoon();
-  buildLabels(); buildMeasures(); buildSelection();
-  drawPanel();
+  rebuildOverlay(); drawPanel(); groupChanged();
 }
+function rebuildOverlay() { disposeGroup(overlay); labelSprites = []; if (!mol) return; buildLabels(); buildMeasures(); buildSelection(); }
+function refreshOverlay() { rebuildOverlay(); drawPanel(); groupChanged(); }
 
 function buildCartoon() {
   const L = lessonView;
@@ -470,8 +489,20 @@ function buildCartoon() {
     if (hiddenChains.has(ch) || (L && L.chains && !L.chains.includes(ch))) continue;
     const prot = mol.residues.filter(r => r.chain === ch && r.kind === 'protein' && r.ca !== undefined);
     const nuc = mol.residues.filter(r => r.chain === ch && r.kind === 'nucleic' && (r.p !== undefined || r.c4 !== undefined));
-    if (prot.length > 1) splitSegments(prot, r => mol.atoms[r.ca], 4.3).forEach(s => tubeFor(s, true));
-    if (nuc.length > 1) splitSegments(nuc, r => mol.atoms[r.p ?? r.c4], 8.5).forEach(s => tubeFor(s, false));
+    if (!mol.cartoon) mol.cartoon = new Map();
+    let parts = mol.cartoon.get(ch);
+    if (!parts) {
+      parts = [];
+      if (prot.length > 1) splitSegments(prot, r => mol.atoms[r.ca], 4.3).forEach(s => parts.push(tubeFor(s, true)));
+      if (nuc.length > 1) splitSegments(nuc, r => mol.atoms[r.p ?? r.c4], 8.5).forEach(s => parts.push(tubeFor(s, false)));
+      mol.cartoon.set(ch, parts);
+    }
+    for (const part of parts) {
+      const colA = part.geo.attributes.color.array, rc = new THREE.Color(); let last = -1;
+      for (let v = 0; v < part.resArr.length; v++) { const ri = part.resArr[v]; if (ri !== last) { rc.copy(lerpHex(resColor(mol.residues[ri]), isDim(ri))); last = ri; } colA[v * 3] = rc.r; colA[v * 3 + 1] = rc.g; colA[v * 3 + 2] = rc.b; }
+      part.geo.attributes.color.needsUpdate = true;
+      const mesh = new THREE.Mesh(part.geo, cartoonMat); mesh.userData.keepGeo = true; mesh.userData.resIdx = part.resArr; reps.add(mesh); cartoonMeshes.push(mesh);
+    }
   }
 }
 function splitSegments(rs, pt, maxD) {
@@ -510,7 +541,6 @@ function tubeFor(rs, isProt) {
   const pos = new Float32Array(rings.length * RING * 3), col = new Float32Array(rings.length * RING * 3), resIdx = new Int32Array(rings.length * RING);
   const c = new THREE.Color();
   rings.forEach((rg, i) => {
-    c.copy(lerpHex(resColor(rg.res), isDim(rg.res.i)));
     for (let j = 0; j < RING; j++) {
       const ang = j / RING * Math.PI * 2; const cs = Math.cos(ang), sn = Math.sin(ang);
       // superellipse-ish: flatter sides for ribbons
@@ -529,8 +559,7 @@ function tubeFor(rs, isProt) {
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(geoPos, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(geoCol, 3)); geo.setIndex(idx); geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.05 }));
-  mesh.userData.resIdx = resArr; reps.add(mesh); cartoonMeshes.push(mesh);
+  return { geo, resArr };
 }
 
 /* labels */
@@ -557,28 +586,28 @@ function resAnchor(r) {
 function buildLabels() {
   if (!lessonView) return;
   const L = lessonView; const custom = new Set();
-  for (const lb of L.labels || []) { const at = selectAtoms(lb.sel)[0]; if (at === undefined) continue; const a = mol.atoms[at]; const sp = makeLabel(lb.text, '#fff3a0'); sp.position.set(a.x, a.y, a.z); sp.userData.lift = 1.6; reps.add(sp); custom.add(a.res); }
-  if (L.hl.size <= 24) for (const ri of L.hl) { const r = mol.residues[ri]; if (custom.has(ri) && r.kind !== 'protein') continue; if (L.chains && !L.chains.includes(r.chain)) continue; const sp = makeLabel(resLabel(r), '#bff3ff'); sp.position.copy(resAnchor(r)); sp.userData.lift = 2.2; reps.add(sp); }
+  for (const lb of L.labels || []) { const at = selectAtoms(lb.sel)[0]; if (at === undefined) continue; const a = mol.atoms[at]; const sp = makeLabel(lb.text, '#fff3a0'); sp.position.set(a.x, a.y, a.z); sp.userData.lift = 1.6; overlay.add(sp); custom.add(a.res); }
+  if (L.hl.size <= 24) for (const ri of L.hl) { const r = mol.residues[ri]; if (custom.has(ri) && r.kind !== 'protein') continue; if (L.chains && !L.chains.includes(r.chain)) continue; const sp = makeLabel(resLabel(r), '#bff3ff'); sp.position.copy(resAnchor(r)); sp.userData.lift = 2.2; overlay.add(sp); }
 }
 function buildMeasures() {
   for (const m of measures) {
     const P = m.atoms.map(i => { const a = mol.atoms[i]; return new THREE.Vector3(a.x, a.y, a.z); });
     const geo = new THREE.BufferGeometry().setFromPoints(P);
     const line = new THREE.Line(geo, new THREE.LineDashedMaterial({ color: 0xffe14a, dashSize: 0.35, gapSize: 0.22, depthTest: false, transparent: true }));
-    line.computeLineDistances(); line.renderOrder = 9; reps.add(line);
-    const sp = makeLabel(m.text, '#ffe14a'); sp.position.copy(P.length === 2 ? P[0].clone().add(P[1]).multiplyScalar(0.5) : P[1]); sp.userData.lift = 0.8; reps.add(sp);
+    line.computeLineDistances(); line.renderOrder = 9; overlay.add(line);
+    const sp = makeLabel(m.text, '#ffe14a'); sp.position.copy(P.length === 2 ? P[0].clone().add(P[1]).multiplyScalar(0.5) : P[1]); sp.userData.lift = 0.8; overlay.add(sp);
   }
   for (const i of picks) addRing(mol.atoms[i], 0xffe14a);
 }
 function addRing(a, color) {
   const r = Math.max(atomRadius(a), 0.3) * 1.5 + 0.25;
   const m = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 12), new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity: 0.55, depthTest: false }));
-  m.position.set(a.x, a.y, a.z); m.renderOrder = 8; reps.add(m);
+  m.position.set(a.x, a.y, a.z); m.renderOrder = 8; overlay.add(m);
 }
 function buildSelection() {
   if (selAtom === null) return; const a = mol.atoms[selAtom]; if (!a) return;
   addRing(a, 0x2fd4ff);
-  const sp = makeLabel(`${a.name} · ${resLabel(mol.residues[a.res])}`, '#9ff0ff'); sp.position.set(a.x, a.y, a.z); sp.userData.lift = 1.4; reps.add(sp);
+  const sp = makeLabel(`${a.name} · ${resLabel(mol.residues[a.res])}`, '#9ff0ff'); sp.position.set(a.x, a.y, a.z); sp.userData.lift = 1.4; overlay.add(sp);
 }
 
 /* selection helpers */
@@ -624,9 +653,10 @@ function titleCase(s) { s = (s || '').toLowerCase(); return s ? s[0].toUpperCase
 function loadSmall(id) {
   const d = DATA.small.find(s => s.id === id); if (!d) return; ++loadToken;
   const m = buildModel(parseSDF(d.sdf), true);
-  setMolecule(m, { code: d.formula, name: { ro: d.ro, en: d.en } }, false);
+  setMolecule(m, { code: d.formula, smallId: id, name: { ro: d.ro, en: d.en } }, false);
 }
 function setMolecule(m, info, keepLesson) {
+  if (mol && mol.cartoon && mol !== m) { for (const parts of mol.cartoon.values()) for (const p of parts) p.geo.dispose(); }
   mol = m; molInfo = info; hiddenChains.clear(); measures = []; picks = []; selAtom = null;
   if (!keepLesson) { lesson = null; lessonView = null; }
   const hasPoly = m.residues.some(r => r.kind === 'protein' || r.kind === 'nucleic');
@@ -673,17 +703,18 @@ function addMeasure(ats, redraw = true) {
   else { const u = P[0].clone().sub(P[1]), v = P[2].clone().sub(P[1]); text = (u.angleTo(v) * 180 / Math.PI).toFixed(1) + '°'; }
   const names = ats.map(i => { const a = mol.atoms[i]; return `${a.name}(${resLabel(mol.residues[a.res])})`; }).join(' – ');
   measures.push({ atoms: ats, text, names }); if (measures.length > 8) measures.shift();
-  if (redraw) rebuild();
+  if (redraw) refreshOverlay();
 }
 function onPickAtom(i) {
+  if (S.tool === 'info' && i !== null && i !== undefined) guideStats.picked = true;
   if (i === null || i === undefined) return;
   if (S.tool === 'dist' || S.tool === 'angle') {
     const need = S.tool === 'dist' ? 2 : 3; if (picks[picks.length - 1] === i) return;
     picks.push(i); selAtom = i;
     if (picks.length >= need) { const p = picks.slice(0, need); picks = []; addMeasure(p, false); }
-    rebuild(); return;
+    refreshOverlay(); return;
   }
-  selAtom = i; rebuild();
+  selAtom = i; refreshOverlay();
 }
 const raycaster = new THREE.Raycaster();
 function pickWithRay() {
@@ -710,8 +741,23 @@ const PW = 1024, PH = 1280;
 const pc = document.createElement('canvas'); pc.width = PW; pc.height = PH; pc.id = 'panel'; document.body.appendChild(pc);
 const g = pc.getContext('2d');
 const panelTex = new THREE.CanvasTexture(pc); panelTex.colorSpace = THREE.SRGBColorSpace; panelTex.anisotropy = 8;
-const panelMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.5), new THREE.MeshBasicMaterial({ map: panelTex, transparent: true, depthWrite: false }));
+const PANEL_W = 0.4, PANEL_H = 0.5;
+const panelMesh = new THREE.Mesh(new THREE.PlaneGeometry(PANEL_W, PANEL_H), new THREE.MeshBasicMaterial({ map: panelTex, transparent: true, depthWrite: false }));
 panelMesh.visible = false; panelMesh.renderOrder = 20; scene.add(panelMesh);
+const hoverQuad = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0x7fe9ff, transparent: true, opacity: 0.28, depthWrite: false, blending: THREE.AdditiveBlending }));
+hoverQuad.visible = false; hoverQuad.renderOrder = 21; panelMesh.add(hoverQuad);
+// drag handle under the panel
+const handleCv = document.createElement('canvas'); handleCv.width = 1024; handleCv.height = 110;
+const handleTex = new THREE.CanvasTexture(handleCv); handleTex.colorSpace = THREE.SRGBColorSpace;
+const handleMesh = new THREE.Mesh(new THREE.PlaneGeometry(PANEL_W * 0.62, PANEL_W * 0.62 * 110 / 1024 * 1.6), new THREE.MeshBasicMaterial({ map: handleTex, transparent: true, depthWrite: false }));
+handleMesh.position.set(0, -PANEL_H / 2 - 0.028, 0); handleMesh.renderOrder = 20; panelMesh.add(handleMesh);
+function drawHandle(active) {
+  const c = handleCv.getContext('2d'); c.clearRect(0, 0, 1024, 110);
+  c.beginPath(); c.roundRect(6, 6, 1012, 98, 49); c.fillStyle = active ? 'rgba(47,212,255,0.85)' : 'rgba(6,12,24,0.88)'; c.fill();
+  c.lineWidth = 5; c.strokeStyle = active ? '#d9fbff' : 'rgba(47,212,255,0.75)'; c.stroke();
+  c.fillStyle = active ? '#001018' : '#bff3ff'; c.font = '700 46px system-ui,Segoe UI,Arial'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillText('⠿  ' + t('moveMenu') + '  ⠿', 512, 58); handleTex.needsUpdate = true;
+}
 const UI = { tab: 'mol', keypad: false, code: '', hover: null, msg: '', err: false };
 let buttons = [];
 const C = { bg: 'rgba(6,12,24,0.90)', acc: '#2fd4ff', text: '#eaf7ff', dim: '#8fb3c9', btn: 'rgba(36,66,96,0.62)', hov: 'rgba(66,128,170,0.85)', edge: 'rgba(47,212,255,0.45)' };
@@ -748,7 +794,7 @@ function drawPanel() {
   g.beginPath(); g.roundRect(4, 4, PW - 8, PH - 8, 34); g.fillStyle = C.bg; g.fill(); g.lineWidth = 4; g.strokeStyle = 'rgba(47,212,255,0.65)'; g.stroke();
   // header
   g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.font = FONT('800', 50); g.fillStyle = C.acc; g.fillText('BioMol AR', 40, 82);
-  button('lang', PW - 190, 32, 150, 62, LANG === 'ro' ? 'RO · en' : 'EN · ro', () => { LANG = LANG === 'ro' ? 'en' : 'ro'; try { localStorage.setItem('biomol-lang', LANG); } catch (e) {} updateDom(); rebuild(); }, { fs: 28, bold: true });
+  button('lang', PW - 190, 32, 150, 62, LANG === 'ro' ? 'RO · en' : 'EN · ro', () => { LANG = LANG === 'ro' ? 'en' : 'ro'; try { localStorage.setItem('biomol-lang', LANG); } catch (e) {} updateDom(); drawHandle(false); refreshOverlay(); }, { fs: 28, bold: true });
   g.textAlign = 'left'; g.textBaseline = 'alphabetic';
   const title = mol ? `${molInfo.code} · ${tr(molInfo.name)}` : t('noMol');
   fitFont(title, PW - 80, 32, '600'); g.fillStyle = C.text; g.fillText(title, 40, 136);
@@ -757,11 +803,11 @@ function drawPanel() {
   else if (mol) sub = mol.small ? `${mol.atoms.length} ${t('atoms')}` : `${mol.atoms.filter(a => a.kind !== 'water').length} ${t('atoms')} · ${mol.residues.filter(r => r.kind === 'protein' || r.kind === 'nucleic').length} ${t('residues')} · ${mol.chains.length} ${t('chains')}`;
   fitFont(sub, PW - 80, 25, '500'); g.fillStyle = UI.err ? '#ff8a8a' : (UI.msg ? '#ffe14a' : C.dim); g.fillText(sub, 40, 174);
   // tabs
-  const tabs = [['mol', t('tabMol')], ['view', t('tabView')], ['tools', t('tabTools')], ['learn', t('tabLearn')]];
-  const tw = (PW - 80 - 3 * 12) / 4;
-  tabs.forEach(([id, lb], k) => button('tab_' + id, 40 + k * (tw + 12), 200, tw, 70, lb, () => { UI.tab = id; UI.keypad = false; drawPanel(); }, { on: UI.tab === id, bold: true, fs: 30 }));
+  const tabs = [['mol', t('tabMol')], ['view', t('tabView')], ['tools', t('tabTools')], ['learn', t('tabLearn')], ['group', t('tabGroup')]];
+  const tw = (PW - 80 - 4 * 10) / 5;
+  tabs.forEach(([id, lb], k) => button('tab_' + id, 40 + k * (tw + 10), 200, tw, 70, lb, () => { UI.tab = id; UI.keypad = false; UI.roompad = false; drawPanel(); }, { on: UI.tab === id, bold: true, fs: 29 }));
   const y0 = 330;
-  if (UI.tab === 'mol') drawMolTab(y0); else if (UI.tab === 'view') drawViewTab(y0); else if (UI.tab === 'tools') drawToolsTab(y0); else drawLearnTab(y0);
+  if (UI.tab === 'mol') drawMolTab(y0); else if (UI.tab === 'view') drawViewTab(y0); else if (UI.tab === 'tools') drawToolsTab(y0); else if (UI.tab === 'learn') drawLearnTab(y0); else drawGroupTab(y0);
   // footer
   const fy = PH - 120, fw = (PW - 80 - 4 * 12) / 5;
   button('zout', 40, fy, fw, 76, '−', () => zoomBy(1 / 1.25), { fs: 44, bold: true });
@@ -827,10 +873,12 @@ function drawToolsTab(y) {
   const w2 = (PW - 80 - 16) / 2;
   [['grab', t('tGrab')], ['info', t('tInfo')], ['dist', t('tDist')], ['angle', t('tAngle')]].forEach(([id, lb], k) => {
     const col = k % 2, row = Math.floor(k / 2);
-    button('t_' + id, 40 + col * (w2 + 16), y + row * 88, w2, 76, lb, () => { S.tool = id; picks = []; rebuild(); }, { on: S.tool === id, bold: true });
+    button('t_' + id, 40 + col * (w2 + 16), y + row * 88, w2, 76, lb, () => { S.tool = id; picks = []; refreshOverlay(); }, { on: S.tool === id, bold: true });
   });
   y += 2 * 88 + 10;
-  button('clr', 40, y, PW - 80, 66, t('clearM'), () => { measures = []; picks = []; selAtom = null; rebuild(); });
+  const hw = (PW - 80 - 16) / 2;
+  button('clr', 40, y, hw, 66, t('clearM'), () => { measures = []; picks = []; selAtom = null; refreshOverlay(); }, { fs: 27 });
+  button('guide', 40 + hw + 16, y, hw, 66, '🧭 ' + t('guideBtn'), () => { if (renderer.xr.isPresenting) startGuide(); else setMsg(t('guideDesk')); }, { fs: 27 });
   y += 110;
   g.textAlign = 'left'; g.textBaseline = 'alphabetic';
   const lines = [];
@@ -865,7 +913,12 @@ function drawLearnTab(y) {
   button('l_exit', 40 + 2 * (bw + 12), by, bw, 84, t('exit'), () => exitLesson());
 }
 function panelPress(x, y) { for (const b of buttons) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { b.act(); return true; } return false; }
-function panelHover(x, y) { let id = null; if (x !== null) for (const b of buttons) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { id = b.id; break; } if (id !== UI.hover) { UI.hover = id; drawPanel(); } }
+function buttonAt(x, y) { if (x === null) return null; for (const b of buttons) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b; return null; }
+function panelHover(x, y) { const b = buttonAt(x, y); const id = b ? b.id : null; if (id !== UI.hover) { UI.hover = id; drawPanel(); } }
+function xrHover(x, y) { // cheap hover in XR: move a highlight quad, no texture upload
+  const b = buttonAt(x, y); hoverQuad.visible = !!b;
+  if (b) { hoverQuad.position.set(((b.x + b.w / 2) / PW - 0.5) * PANEL_W, (0.5 - (b.y + b.h / 2) / PH) * PANEL_H, 0.002); hoverQuad.scale.set(b.w / PW * PANEL_W, b.h / PH * PANEL_H, 1); }
+}
 function zoomBy(f) { S.userZoom = THREE.MathUtils.clamp(S.userZoom * f, 0.15, 14); }
 
 /* desktop panel events */
@@ -873,6 +926,7 @@ pc.addEventListener('pointermove', e => { const r = pc.getBoundingClientRect(); 
 pc.addEventListener('pointerleave', () => panelHover(null, null));
 pc.addEventListener('pointerdown', e => { e.preventDefault(); const r = pc.getBoundingClientRect(); panelPress((e.clientX - r.left) / r.width * PW, (e.clientY - r.top) / r.height * PH); });
 addEventListener('keydown', e => {
+  if (UI.roompad) { if (/^[0-9]$/.test(e.key) && UI.code.length < 4) UI.code += e.key; else if (e.key === 'Backspace') UI.code = UI.code.slice(0, -1); else if (e.key === 'Enter' && UI.code.length === 4) { UI.roompad = false; joinSession(UI.code); } else if (e.key === 'Escape') UI.roompad = false; drawPanel(); return; }
   if (!UI.keypad) return;
   if (/^[a-zA-Z0-9]$/.test(e.key) && UI.code.length < 4) UI.code += e.key.toUpperCase();
   else if (e.key === 'Backspace') UI.code = UI.code.slice(0, -1);
@@ -883,11 +937,16 @@ addEventListener('keydown', e => {
 /* desktop molecule picking */
 let downPos = null;
 renderer.domElement.addEventListener('pointerdown', e => { downPos = [e.clientX, e.clientY]; });
+let lastPtrCast = 0;
+renderer.domElement.addEventListener('pointermove', e => {
+  if (G.role !== 'teacher' || !mol || e.buttons) return; const now = performance.now(); if (now - lastPtrCast < 90) return; lastPtrCast = now;
+  raycaster.setFromCamera(new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera); G.pointer = pickWithRay();
+});
 renderer.domElement.addEventListener('pointerup', e => {
   if (!downPos || e.button !== 0) return; const moved = Math.hypot(e.clientX - downPos[0], e.clientY - downPos[1]); downPos = null; if (moved > 6 || !mol) return;
   const ndc = new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   raycaster.setFromCamera(ndc, camera); const i = pickWithRay();
-  if (i !== null) onPickAtom(i); else if (selAtom !== null && S.tool !== 'dist' && S.tool !== 'angle') { selAtom = null; rebuild(); }
+  if (i !== null) onPickAtom(i); else if (selAtom !== null && S.tool !== 'dist' && S.tool !== 'angle') { selAtom = null; refreshOverlay(); }
 });
 
 function panelWidthPx() { const r = pc.getBoundingClientRect(); return innerWidth > innerHeight ? r.width + 12 : 0; }
@@ -916,8 +975,9 @@ xrBtn.addEventListener('click', async () => {
     const session = await navigator.xr.requestSession(xrMode, { optionalFeatures: ['hand-tracking', 'local-floor'] });
     camera.clearViewOffset(); controls.enabled = false;
     await renderer.xr.setSession(session);
-    pc.style.display = 'none'; xrBtn.style.display = 'none'; for (const id of ['hint','about']) document.getElementById(id).style.display = 'none'; panelMesh.visible = true; placePending = 3; drawPanel();
-    session.addEventListener('end', () => { controls.enabled = true; pc.style.display = ''; xrBtn.style.display = ''; for (const id of ['hint','about']) document.getElementById(id).style.display = ''; panelMesh.visible = false; grabs.length = 0; resetView(); drawPanel(); });
+    pc.style.display = 'none'; xrBtn.style.display = 'none'; for (const id of ['hint','about']) document.getElementById(id).style.display = 'none'; panelMesh.visible = true; placePending = 3; drawHandle(false); drawPanel(); try { renderer.xr.setFoveation(0.5); } catch (e) {}
+    let seen = false; try { seen = localStorage.getItem('biomol-guide-done') === '1'; } catch (e) {} if (!seen) setTimeout(startGuide, 900);
+    session.addEventListener('end', () => { controls.enabled = true; pc.style.display = ''; xrBtn.style.display = ''; for (const id of ['hint','about']) document.getElementById(id).style.display = ''; panelMesh.visible = false; grabs.length = 0; panelDrag = null; hoverQuad.visible = false; for (const h of hands) h.vis.visible = false; guide.on = false; guideMesh.visible = false; resetView(); drawPanel(); });
   } catch (e) { setMsg('WebXR: ' + (e.message || e), true); }
 });
 let placePending = 0;
@@ -928,7 +988,10 @@ function placeInFront() {
   const left = fwd.clone().applyAxisAngle(UP, 0.62);
   panelMesh.position.copy(head).addScaledVector(left, 0.6); panelMesh.position.y -= 0.06;
   panelMesh.lookAt(head.x, panelMesh.position.y, head.z);
+  lastHead.copy(head);
 }
+const lastHead = new THREE.Vector3();
+let hoverOwner = null;
 const ctrls = []; const grabs = []; let grabRel = new THREE.Matrix4(), twoD0 = 1, twoZ0 = 1;
 const rayGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
 for (let k = 0; k < 2; k++) {
@@ -938,21 +1001,38 @@ for (let k = 0; k < 2; k++) {
   c.addEventListener('connected', e => { c.userData.src = e.data; line.visible = !!e.data.targetRayMode && e.data.targetRayMode !== 'screen'; });
   c.addEventListener('disconnected', () => { c.userData.src = null; release(c); dot.visible = false; });
   c.addEventListener('selectstart', () => onSelect(c));
-  c.addEventListener('selectend', () => release(c));
-  c.addEventListener('squeezestart', () => startGrab(c));
-  c.addEventListener('squeezeend', () => release(c));
+  c.addEventListener('selectend', () => { release(c); endPanelDrag(c); });
+  c.addEventListener('squeezestart', () => { setRay(c); const h = panelOrHandleHit(); if (h) startPanelDrag(c, h); else startGrab(c); });
+  c.addEventListener('squeezeend', () => { release(c); endPanelDrag(c); });
   scene.add(c); ctrls.push(c);
 }
 function setRay(c) { tmpM.identity().extractRotation(c.matrixWorld); raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld); raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tmpM); }
 function panelHit() { if (!panelMesh.visible) return null; const h = raycaster.intersectObject(panelMesh, false)[0]; return h || null; }
+function handleHit() { if (!panelMesh.visible) return null; return raycaster.intersectObject(handleMesh, false)[0] || null; }
+function panelOrHandleHit() { return handleHit() || panelHit(); }
+let panelDrag = null; // {c, dist, off}
+function startPanelDrag(c, hit) {
+  panelDrag = { c, dist: hit.distance, off: panelMesh.position.clone().sub(hit.point) }; drawHandle(true); buzz(c);
+}
+function endPanelDrag(c) { if (panelDrag && panelDrag.c === c) { panelDrag = null; drawHandle(false); guideStats.dragged = true; } }
+function updatePanelDrag(dt) {
+  const c = panelDrag.c; setRay(c);
+  const gp = c.userData.src && c.userData.src.gamepad; if (gp && gp.axes) { const ay = Math.abs(gp.axes[3] || 0) > Math.abs(gp.axes[1] || 0) ? gp.axes[3] : gp.axes[1]; if (Math.abs(ay) > 0.35) panelDrag.dist = THREE.MathUtils.clamp(panelDrag.dist - ay * dt * 0.8, 0.2, 2.5); }
+  const p = raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, panelDrag.dist).add(panelDrag.off);
+  panelMesh.position.lerp(p, 0.6);
+  const cam = renderer.xr.getCamera(); cam.getWorldPosition(lastHead); panelMesh.lookAt(lastHead);
+}
 function molSphereHit() {
   if (!mol) return false; const c = new THREE.Vector3(); molRoot.getWorldPosition(c); const r = mol.radius * scaler.scale.x * 0.95;
   return raycaster.ray.distanceSqToPoint(c) < r * r;
 }
 function buzz(c) { try { c.userData.src?.gamepad?.hapticActuators?.[0]?.pulse(0.35, 25); } catch (e) {} }
 function onSelect(c) {
-  setRay(c); const ph = panelHit();
-  if (ph) { panelPress(ph.uv.x * PW, (1 - ph.uv.y) * PH); buzz(c); return; }
+  setRay(c);
+  const gh = guideHit(); if (gh) { guidePress(gh.uv.x * GW, (1 - gh.uv.y) * GH); buzz(c); return; }
+  const hh = handleHit(); if (hh) { startPanelDrag(c, hh); return; }
+  const ph = panelHit();
+  if (ph) { const x = ph.uv.x * PW, y = (1 - ph.uv.y) * PH; if (!panelPress(x, y) && y < 190) startPanelDrag(c, ph); else buzz(c); return; }
   if (!mol) return;
   if (S.tool === 'grab') { if (molSphereHit()) { startGrab(c); buzz(c); } return; }
   const i = pickWithRay(); if (i !== null) { onPickAtom(i); buzz(c); }
@@ -964,9 +1044,299 @@ function refreshGrab() {
   else if (grabs.length >= 2) { twoD0 = Math.max(0.02, grabs[0].position.distanceTo(grabs[1].position)); twoZ0 = S.userZoom; }
 }
 
+/* ============================== hands ============================== */
+const FINGERS = ['thumb', 'index-finger', 'middle-finger', 'ring-finger', 'pinky-finger'];
+const JOINTS = ['wrist'];
+for (const f of FINGERS) for (const j of (f === 'thumb' ? ['metacarpal', 'phalanx-proximal', 'phalanx-distal', 'tip'] : ['metacarpal', 'phalanx-proximal', 'phalanx-intermediate', 'phalanx-distal', 'tip'])) JOINTS.push(f + '-' + j);
+const BONES = []; // pairs of joint indices
+{ let k = 1; for (const f of FINGERS) { const n = f === 'thumb' ? 4 : 5; BONES.push([0, k]); for (let q = 0; q < n - 1; q++) BONES.push([k + q, k + q + 1]); k += n; } }
+const hands = [];
+for (let k = 0; k < 2; k++) {
+  const hand = renderer.xr.getHand(k); scene.add(hand);
+  const vis = new THREE.Group(); vis.visible = false; scene.add(vis);
+  const jm = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }), JOINTS.length);
+  jm.frustumCulled = false; vis.add(jm);
+  const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(BONES.length * 6), 3));
+  const bones = new THREE.LineSegments(bg, new THREE.LineBasicMaterial({ color: 0x2fd4ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })); bones.frustumCulled = false; vis.add(bones);
+  const tipGlow = new THREE.Mesh(new THREE.SphereGeometry(0.012, 16, 12), new THREE.MeshBasicMaterial({ color: 0x2fd4ff, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })); vis.add(tipGlow);
+  const h = { hand, vis, jm, bones, tipGlow, active: false, poked: false, ctrl: null };
+  hand.addEventListener('connected', e => { h.active = !!e.data.hand; h.ctrl = renderer.xr.getController(k); });
+  hand.addEventListener('disconnected', () => { h.active = false; vis.visible = false; });
+  hands.push(h);
+}
+const jp = new THREE.Vector3(), cJ = new THREE.Color(), tipLocal = new THREE.Vector3(), tipW = new THREE.Vector3(), thumbW = new THREE.Vector3();
+function updateHands() {
+  for (const h of hands) {
+    const J = h.hand.joints; if (!h.active || !J || !J['wrist'] || !J['index-finger-tip'] || !J['index-finger-tip'].visible) { h.vis.visible = false; if (h.ctrl) h.ctrl.userData.line.visible = true; continue; }
+    h.vis.visible = true;
+    J['index-finger-tip'].getWorldPosition(tipW); J['thumb-tip'].getWorldPosition(thumbW);
+    const pinch = THREE.MathUtils.clamp(1 - (tipW.distanceTo(thumbW) - 0.015) / 0.04, 0, 1);
+    const pos = h.bones.geometry.attributes.position.array; const P = [];
+    JOINTS.forEach((name, i) => {
+      const j = J[name]; if (j) j.getWorldPosition(jp); P.push(jp.clone());
+      const tip = name.endsWith('tip'); const r = THREE.MathUtils.clamp((j && j.jointRadius ? j.jointRadius : 0.008) * (tip ? 0.75 : 0.55), 0.003, name === 'wrist' ? 0.007 : 0.0055);
+      tmpM.makeScale(r, r, r).setPosition(jp); h.jm.setMatrixAt(i, tmpM);
+      const glow = (name === 'index-finger-tip' || name === 'thumb-tip') ? pinch : 0;
+      cJ.setRGB(0.18 + 0.82 * glow, 0.83 + 0.17 * glow, 1); h.jm.setColorAt(i, cJ);
+    });
+    BONES.forEach(([a, b], i) => { pos.set([P[a].x, P[a].y, P[a].z, P[b].x, P[b].y, P[b].z], i * 6); });
+    h.jm.instanceMatrix.needsUpdate = true; if (h.jm.instanceColor) h.jm.instanceColor.needsUpdate = true; h.bones.geometry.attributes.position.needsUpdate = true;
+    // fingertip glow + direct touch on the menu
+    h.tipGlow.position.copy(tipW); h.tipGlow.scale.setScalar(1 + pinch * 0.8);
+    if (guideMesh.visible) {
+      tipLocal.copy(tipW); guideMesh.worldToLocal(tipLocal);
+      const inG = Math.abs(tipLocal.x) < GUIDE_W / 2 && Math.abs(tipLocal.y) < GUIDE_H / 2;
+      if (inG && tipLocal.z < 0.008 && tipLocal.z > -0.03 && !h.pokedG) { h.pokedG = true; guidePress((tipLocal.x / GUIDE_W + 0.5) * GW, (0.5 - tipLocal.y / GUIDE_H) * GH); }
+      if (!inG || tipLocal.z > 0.025) h.pokedG = false;
+    }
+    if (panelMesh.visible) {
+      tipLocal.copy(tipW); panelMesh.worldToLocal(tipLocal);
+      const inside = Math.abs(tipLocal.x) < PANEL_W / 2 && Math.abs(tipLocal.y) < PANEL_H / 2;
+      const x = (tipLocal.x / PANEL_W + 0.5) * PW, y = (0.5 - tipLocal.y / PANEL_H) * PH;
+      if (inside && tipLocal.z < 0.06 && tipLocal.z > -0.03) { xrHover(x, y); hoverOwner = h; h.tipGlow.material.opacity = 0.35 + 0.5 * (1 - Math.max(0, tipLocal.z) / 0.06); }
+      else { h.tipGlow.material.opacity = 0.25 + pinch * 0.4; if (hoverOwner === h) { hoverQuad.visible = false; hoverOwner = null; } }
+      if (inside && tipLocal.z < 0.008 && tipLocal.z > -0.03 && !h.poked) { h.poked = true; panelPress(x, y); }
+      if (!inside || tipLocal.z > 0.025) h.poked = false;
+      // hide the ray while the finger is close to the menu (direct-touch mode)
+      if (h.ctrl) h.ctrl.userData.line.visible = !(inside && tipLocal.z < 0.12);
+    }
+  }
+}
+
+/* ============================== group work (MQTT over WebSocket) ============================== */
+const BROKERS = ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt', 'wss://test.mosquitto.org:8081'];
+const urlBroker = new URLSearchParams(location.search).get('broker');
+const G = { role: null, room: null, client: null, status: 'off', students: new Map(), follow: true, teacherSeen: 0, lastSig: '', lastPoseSig: '', lastPoseAt: 0, poseTimer: 0, lastState: null, lastPose: null, appliedLesson: '', pointer: null, id: Math.random().toString(36).slice(2, 10), uiSig: '' };
+let mqttMod = null, pubTimer = null, remoteTok = 0;
+const persistentLabels = [];
+const markGroup = new THREE.Group(); inner.add(markGroup); markGroup.visible = false;
+{ const ring = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.12, 8, 32), new THREE.MeshBasicMaterial({ color: 0xffa24a, transparent: true, opacity: 0.9, depthTest: false })); ring.renderOrder = 12; markGroup.add(ring); markGroup.userData.ring = ring;
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(1.0, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffa24a, transparent: true, opacity: 0.35, depthTest: false, blending: THREE.AdditiveBlending })); glow.renderOrder = 12; markGroup.add(glow); }
+let markLabel = null;
+function setMarkLabel() { if (markLabel) { markGroup.remove(markLabel); markLabel.material.map.dispose(); markLabel.material.dispose(); persistentLabels.length = 0; }
+  markLabel = makeLabel('👆 ' + t('teacher'), '#ffc27a'); labelSprites.pop(); markLabel.userData.lift = 1.2; markGroup.add(markLabel); persistentLabels.push(markLabel); }
+const topic = (k) => `biomol-ar/v1/${G.room}/${k}`;
+async function mqttConnect(url) {
+  if (!mqttMod) mqttMod = await import('https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.esm.js');
+  const lib = mqttMod.default || mqttMod;
+  return new Promise((res, rej) => {
+    const c = lib.connect(url, { connectTimeout: 6000, reconnectPeriod: 2500, clientId: 'biomol_' + G.id + '_' + Math.random().toString(36).slice(2, 6), clean: true, keepalive: 30 });
+    const to = setTimeout(() => { try { c.end(true); } catch (e) {} rej(new Error('timeout')); }, 7500);
+    c.once('connect', () => { clearTimeout(to); res(c); });
+    c.once('error', (e) => { clearTimeout(to); try { c.end(true); } catch (x) {} rej(e); });
+  });
+}
+async function createSession() {
+  G.status = 'connecting'; G.role = 'teacher'; drawPanel();
+  const list = urlBroker ? [urlBroker] : BROKERS;
+  for (let k = 0; k < list.length; k++) {
+    try { const c = await mqttConnect(list[k]); const code = (urlBroker ? '0' : String(k + 1)) + String(Math.floor(Math.random() * 1000)).padStart(3, '0'); setupClient(c, 'teacher', code); return; } catch (e) {}
+  }
+  G.status = 'error'; drawPanel();
+}
+async function joinSession(code) {
+  const idx = +code[0]; const url = idx === 0 ? urlBroker : BROKERS[idx - 1];
+  if (!url || !/^\d{4}$/.test(code)) { setMsg(t('grpBadCode'), true); return; }
+  G.status = 'connecting'; G.role = 'student'; G.room = code; drawPanel();
+  try { const c = await mqttConnect(url); setupClient(c, 'student', code); } catch (e) { G.status = 'error'; drawPanel(); }
+}
+function setupClient(c, role, code) {
+  G.client = c; G.role = role; G.room = code; G.status = 'on'; G.students.clear(); G.lastSig = ''; G.lastPoseSig = ''; G.appliedLesson = '';
+  c.on('connect', () => { G.status = 'on'; if (G.role === 'teacher') { G.lastSig = ''; groupChanged(); } drawPanel(); });
+  c.on('reconnect', () => { G.status = 'connecting'; drawPanel(); });
+  c.on('message', (tp, buf) => { let d; try { d = JSON.parse(buf.toString()); } catch (e) { return; } onGroupMessage(tp.split('/').pop(), d); });
+  if (role === 'teacher') { c.subscribe(topic('hello')); groupChanged(); }
+  else { c.subscribe([topic('state'), topic('pose')]); c.publish(topic('hello'), JSON.stringify({ id: G.id })); }
+  setMarkLabel(); drawPanel();
+}
+function leaveSession() {
+  if (G.client) { try { if (G.role === 'teacher') G.client.publish(topic('state'), '', { retain: true }); G.client.end(); } catch (e) {} }
+  Object.assign(G, { role: null, room: null, client: null, status: 'off', lastState: null, lastPose: null, pointer: null }); G.students.clear(); markGroup.visible = false; drawPanel();
+}
+function buildState() {
+  if (!mol) return { v: 1, mol: null };
+  return { v: 1, mol: mol.small ? { t: 's', id: molInfo.smallId } : { t: 'p', id: molInfo.code }, lesson: lesson ? { id: lesson.L.id, i: lesson.i } : null,
+    S: { mode: S.mode, color: S.color, water: S.water, hyd: S.hyd, lig: S.lig, side: S.side }, hidden: [...hiddenChains], meas: measures.map(m => m.atoms), sel: selAtom };
+}
+function groupChanged() {
+  if (G.role !== 'teacher' || G.status !== 'on') return;
+  clearTimeout(pubTimer);
+  pubTimer = setTimeout(() => { const sig = JSON.stringify(buildState()); if (sig === G.lastSig) return; G.lastSig = sig; G.client.publish(topic('state'), sig, { retain: true }); }, 60);
+}
+function onGroupMessage(kind, d) {
+  if (G.role === 'teacher' && kind === 'hello' && d.id) { const had = G.students.size; G.students.set(d.id, Date.now()); if (G.students.size !== had) drawPanel(); return; }
+  if (G.role !== 'student') return;
+  if (kind === 'state') { G.teacherSeen = Date.now(); G.lastState = d; if (G.follow) applyRemoteState(d); }
+  if (kind === 'pose') { G.teacherSeen = Date.now(); G.lastPose = d; }
+}
+async function applyRemoteState(st) {
+  const tok = ++remoteTok; if (!st || !st.mol) return;
+  const want = st.mol.t === 's' ? 's:' + st.mol.id : 'p:' + st.mol.id;
+  const have = () => mol ? (mol.small ? 's:' + molInfo.smallId : 'p:' + molInfo.code) : '';
+  if (st.lesson) {
+    const L = LESSONS.find(l => l.id === st.lesson.id); if (!L) return;
+    const key = L.id + ':' + st.lesson.i;
+    if (want !== have()) { lesson = { L, i: st.lesson.i }; const ok = await loadPDB(L.pdb, null, true); if (!ok || tok !== remoteTok) return; G.appliedLesson = ''; }
+    lesson = { L, i: Math.min(st.lesson.i, L.steps.length - 1) };
+    if (G.appliedLesson !== key) { applyStep(); G.appliedLesson = key; }
+  } else {
+    G.appliedLesson = '';
+    if (want !== have()) { if (st.mol.t === 's') loadSmall(st.mol.id); else { const ok = await loadPDB(st.mol.id); if (!ok || tok !== remoteTok) return; } }
+    if (lesson) { lesson = null; lessonView = null; zoomLesson = 1; pivotTarget.copy(mol.center); }
+  }
+  if (tok !== remoteTok || !mol) return;
+  Object.assign(S, st.S || {}); hiddenChains.clear(); for (const c of st.hidden || []) hiddenChains.add(c);
+  measures = []; for (const ats of st.meas || []) if (ats.every(i => i < mol.atoms.length)) addMeasure(ats, false);
+  picks = []; selAtom = (st.sel !== null && st.sel !== undefined && st.sel < mol.atoms.length) ? st.sel : null;
+  rebuild();
+}
+const qFrame = new THREE.Quaternion(), qTmp = new THREE.Quaternion(), headTmp = new THREE.Vector3();
+function viewerFrame(out) {
+  if (renderer.xr.isPresenting) { renderer.xr.getCamera().getWorldPosition(headTmp); const m = molRoot.position; out.setFromAxisAngle(UP, Math.atan2(headTmp.x - m.x, headTmp.z - m.z)); }
+  else out.copy(camera.quaternion);
+  return out;
+}
+function groupTick(dt, xr) {
+  if (!G.role) { markGroup.visible = false; return; }
+  const now = Date.now();
+  if (G.role === 'teacher' && G.status === 'on') {
+    G.poseTimer += dt;
+    if (G.poseTimer > 0.1) {
+      G.poseTimer = 0;
+      if (xr) { const c = ctrls.find(q => q.userData.src); if (c) { setRay(c); G.pointer = guideHit() || panelOrHandleHit() ? null : pickWithRay(); } }
+      qTmp.copy(viewerFrame(qFrame)).invert().multiply(molRoot.quaternion);
+      const pose = { q: qTmp.toArray().map(v => +v.toFixed(3)), z: +S.userZoom.toFixed(3), p: G.pointer ?? null };
+      const sig = JSON.stringify(pose);
+      if (sig !== G.lastPoseSig || now - G.lastPoseAt > 2000) { G.lastPoseSig = sig; G.lastPoseAt = now; G.client.publish(topic('pose'), sig); }
+    }
+    for (const [id, tm] of G.students) if (now - tm > 25000) { G.students.delete(id); drawPanel(); }
+    showMark(G.pointer);
+  }
+  if (G.role === 'student') {
+    if (G.status === 'on' && now - (G.lastHello || 0) > 8000) { G.lastHello = now; G.client.publish(topic('hello'), JSON.stringify({ id: G.id })); }
+    const P = G.lastPose;
+    if (G.follow && P && mol) {
+      if (!grabs.length) { qTmp.fromArray(P.q); viewerFrame(qFrame).multiply(qTmp); molRoot.quaternion.slerp(qFrame, 1 - Math.pow(0.0005, dt)); }
+      S.userZoom = P.z || 1; S.spin = false; showMark(P.p);
+    } else showMark(null);
+  }
+  const sig = G.status + '|' + G.students.size + '|' + (now - G.teacherSeen < 5000);
+  if (sig !== G.uiSig) { G.uiSig = sig; if (UI.tab === 'group') drawPanel(); }
+}
+function showMark(i) {
+  if (i === null || i === undefined || !mol || !mol.atoms[i]) { markGroup.visible = false; return; }
+  const a = mol.atoms[i]; markGroup.visible = true; markGroup.position.set(a.x, a.y, a.z); markGroup.scale.setScalar(Math.max(1, 0.014 / (1.3 * scaler.scale.x)));
+  const sc = 0.85 + 0.15 * Math.sin(performance.now() / 180); markGroup.userData.ring.scale.setScalar(sc);
+  if (renderer.xr.isPresenting) markGroup.userData.ring.lookAt(renderer.xr.getCamera().getWorldPosition(headTmp)); else markGroup.userData.ring.quaternion.copy(camera.quaternion).premultiply(qTmp.copy(markGroup.parent.getWorldQuaternion(new THREE.Quaternion())).invert());
+}
+function drawGroupTab(y) {
+  if (UI.roompad) return drawRoomPad(y);
+  section(t('grpTitle'), y); y += 44;
+  g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  const para = (txt, col = C.dim, fs = 28) => { for (const l of wrap(txt, PW - 96, FONT('500', fs))) { g.font = FONT('500', fs); g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillStyle = col; g.fillText(l, 46, y); y += fs + 12; } };
+  if (!G.role || G.status === 'off') {
+    para(t('grpIntro')); y += 20;
+    button('g_teacher', 40, y, PW - 80, 120, t('grpTeacher'), () => createSession(), { sub: t('grpTeacherSub'), align: 'left', fs: 36 }); y += 140;
+    button('g_student', 40, y, PW - 80, 120, t('grpStudent'), () => { UI.roompad = true; UI.code = ''; drawPanel(); }, { sub: t('grpStudentSub'), align: 'left', fs: 36 });
+    return;
+  }
+  if (G.status === 'connecting') { para(t('grpConnecting'), '#ffe14a', 34); y += 20; button('g_cancel', 40, y, PW - 80, 76, t('cancel'), () => leaveSession()); return; }
+  if (G.status === 'error') { para(t('grpErr'), '#ff8a8a', 30); y += 20;
+    button('g_retry', 40, y, PW - 80, 80, t('retry'), () => { const r = G.role, code = G.room; leaveSession(); if (r === 'teacher') createSession(); else if (code) joinSession(code); }, { on: true, bold: true }); y += 96;
+    button('g_cancel', 40, y, PW - 80, 76, t('cancel'), () => leaveSession()); return; }
+  if (G.role === 'teacher') {
+    g.textAlign = 'left'; g.font = FONT('600', 28); g.fillStyle = C.dim; g.fillText(t('grpCode'), 46, y); y += 120;
+    g.font = FONT('800', 130); g.fillStyle = C.acc; g.fillText(G.room.split('').join(' '), 46, y); y += 70;
+    g.font = FONT('700', 36); g.fillStyle = '#7dff6a'; g.fillText('● ' + t('grpStudents', { n: G.students.size }), 46, y); y += 70;
+    para(t('grpTeacherInfo'), C.text, 29); y += 20;
+    button('g_end', 40, y, PW - 80, 80, t('grpEnd'), () => leaveSession(), { bold: true });
+  } else {
+    g.textAlign = 'left'; g.font = FONT('700', 44); g.fillStyle = C.acc; g.fillText(t('grpSession', { c: G.room }), 46, y + 10); y += 70;
+    const on = Date.now() - G.teacherSeen < 5000;
+    g.font = FONT('700', 32); g.fillStyle = on ? '#7dff6a' : '#ffe14a'; g.fillText((on ? '● ' : '○ ') + (on ? t('grpTeacherOn') : t('grpTeacherOff')), 46, y); y += 60;
+    button('g_follow', 40, y, PW - 80, 90, (G.follow ? '☑ ' : '☐ ') + t('grpFollow'), () => { G.follow = !G.follow; if (G.follow && G.lastState) { G.appliedLesson = ''; applyRemoteState(G.lastState); } drawPanel(); }, { on: G.follow, bold: true, fs: 34 }); y += 120;
+    para(t('grpFollowInfo'), C.dim, 27); y += 20;
+    button('g_leave', 40, y, PW - 80, 76, t('grpLeave'), () => leaveSession());
+  }
+}
+function drawRoomPad(y) {
+  section(t('grpRoom'), y); y += 34;
+  g.beginPath(); g.roundRect(40, y, PW - 80, 110, 16); g.fillStyle = 'rgba(0,0,0,0.45)'; g.fill(); g.strokeStyle = C.acc; g.lineWidth = 3; g.stroke();
+  g.font = FONT('800', 74); g.fillStyle = C.acc; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText((UI.code + '____').slice(0, 4).split('').join(' '), PW / 2, y + 58);
+  y += 136; const kw = (PW - 80 - 2 * 14) / 3;
+  '123456789'.split('').forEach((k, i) => button('r_' + k, 40 + (i % 3) * (kw + 14), y + Math.floor(i / 3) * 104, kw, 92, k, () => { if (UI.code.length < 4) UI.code += k; drawPanel(); }, { fs: 46, bold: true }));
+  y += 3 * 104;
+  button('r_del', 40, y, kw, 92, '⌫', () => { UI.code = UI.code.slice(0, -1); drawPanel(); }, { fs: 44 });
+  button('r_0', 40 + kw + 14, y, kw, 92, '0', () => { if (UI.code.length < 4) UI.code += '0'; drawPanel(); }, { fs: 46, bold: true });
+  button('r_join', 40 + 2 * (kw + 14), y, kw, 92, t('join'), () => { if (UI.code.length === 4) { UI.roompad = false; joinSession(UI.code); } }, { on: UI.code.length === 4, bold: true, disabled: UI.code.length !== 4 });
+  y += 112; button('r_cancel', 40, y, PW - 80, 70, t('cancel'), () => { UI.roompad = false; drawPanel(); });
+}
+
+/* ============================== first-use guide (AR) ============================== */
+const GUIDE = [
+  { ro:'Bun venit! Molecula plutește în fața ta. Mișcă-te puțin și privește-o din lateral, ca pe un obiect adevărat.', en:'Welcome! The molecule floats in front of you. Move around a little and look at it from the side, like a real object.' },
+  { ro:'Apucă molecula: ține apăsat bumperul (butonul lateral) și mișcă mâna. Cu mâinile: prinde-o cu un pinch (degetul mare + arătătorul).', en:'Grab the molecule: hold the bumper (side button) and move your hand. With hands: pinch it (thumb + index finger).', check: () => guideStats.grabMoved > 0.12 },
+  { ro:'Mărește sau micșorează: glisează pe touchpad în sus sau în jos. Poți folosi și butoanele + și − din meniu.', en:'Zoom in or out: swipe up or down on the touchpad. You can also use the + and − buttons in the menu.', check: () => Math.abs(Math.log(S.userZoom / guideStats.zoom0)) > 0.3 },
+  { ro:'Rotește molecula: glisează pe touchpad la stânga sau la dreapta.', en:'Rotate the molecule: swipe left or right on the touchpad.', check: () => guideStats.rot > 0.8 },
+  { ro:'Meniul: țintește un buton cu raza și apasă trăgaciul, sau atinge-l cu degetul arătător. Deschide fila „Unelte”.', en:'The menu: point at a button and pull the trigger, or touch it with your index finger. Open the “Tools” tab.', check: () => UI.tab === 'tools' },
+  { ro:'Alege „Info atom”, apoi țintește un atom și apasă trăgaciul. În meniu apar detaliile lui.', en:'Choose “Atom info”, then point at an atom and pull the trigger. Its details appear in the menu.', check: () => guideStats.picked },
+  { ro:'Mută meniul acolo unde îți e comod: trage de bara de sub el.', en:'Move the menu where it is comfortable: drag the bar below it.', check: () => guideStats.dragged },
+  { ro:'Gata! Acum știi tot ce trebuie. Deschide fila „Lecții” ca să începi o lecție.', en:'Done! You know everything you need. Open the “Lessons” tab to start a lesson.', final: true },
+];
+const guideStats = { grabMoved: 0, zoom0: 1, rot: 0, picked: false, dragged: false };
+const guide = { on: false, i: 0, ok: false, okT: 0, hover: null, hoverOwner: null };
+const GW = 1024, GH = 520, GUIDE_W = 0.34, GUIDE_H = GUIDE_W * GH / GW;
+const guideCv = document.createElement('canvas'); guideCv.width = GW; guideCv.height = GH; const gg = guideCv.getContext('2d');
+const guideTex = new THREE.CanvasTexture(guideCv); guideTex.colorSpace = THREE.SRGBColorSpace; guideTex.anisotropy = 8;
+const guideMesh = new THREE.Mesh(new THREE.PlaneGeometry(GUIDE_W, GUIDE_H), new THREE.MeshBasicMaterial({ map: guideTex, transparent: true, depthWrite: false }));
+guideMesh.visible = false; guideMesh.renderOrder = 22; scene.add(guideMesh);
+let guideBtns = [];
+function guideHit() { if (!guideMesh.visible) return null; return raycaster.intersectObject(guideMesh, false)[0] || null; }
+function resetGuideStep() { guideStats.grabMoved = 0; guideStats.zoom0 = S.userZoom; guideStats.rot = 0; guideStats.picked = false; guideStats.dragged = false; guide.ok = false; guide.okT = 0; }
+function startGuide() { guide.on = true; guide.i = 0; resetGuideStep(); placeGuide(true); guideMesh.visible = true; drawGuide(); }
+function endGuide() { guide.on = false; guideMesh.visible = false; try { localStorage.setItem('biomol-guide-done', '1'); } catch (e) {} }
+function guideNext() { if (guide.i >= GUIDE.length - 1) return endGuide(); guide.i++; resetGuideStep(); drawGuide(); }
+function guidePress(x, y) { for (const b of guideBtns) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { b.act(); return true; } return false; }
+function guideHover(x, y) { let id = null; if (x !== null) for (const b of guideBtns) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) id = b.id; if (id !== guide.hover) { guide.hover = id; drawGuide(); } }
+function gButton(id, x, y, w, h, label, act, on) {
+  const hov = guide.hover === id; gg.beginPath(); gg.roundRect(x, y, w, h, 16); gg.fillStyle = on ? C.acc : hov ? C.hov : C.btn; gg.fill(); gg.lineWidth = 3; gg.strokeStyle = on ? '#d9fbff' : C.edge; gg.stroke();
+  gg.fillStyle = on ? '#001018' : C.text; gg.font = FONT('700', 32); gg.textAlign = 'center'; gg.textBaseline = 'middle'; gg.fillText(label, x + w / 2, y + h / 2 + 1); guideBtns.push({ id, x, y, w, h, act });
+}
+function drawGuide() {
+  guideBtns = []; const st = GUIDE[guide.i]; gg.clearRect(0, 0, GW, GH);
+  gg.beginPath(); gg.roundRect(4, 4, GW - 8, GH - 8, 30); gg.fillStyle = 'rgba(6,12,24,0.92)'; gg.fill(); gg.lineWidth = 5; gg.strokeStyle = guide.ok ? '#7dff6a' : '#ffc27a'; gg.stroke();
+  gg.textAlign = 'left'; gg.textBaseline = 'alphabetic'; gg.font = FONT('800', 38); gg.fillStyle = '#ffc27a'; gg.fillText('🧭 ' + t('guideTitle'), 36, 64);
+  for (let k = 0; k < GUIDE.length; k++) { gg.beginPath(); gg.arc(GW - 50 - (GUIDE.length - 1 - k) * 30, 52, 9, 0, 7); gg.fillStyle = k < guide.i || (k === guide.i && guide.ok) ? '#7dff6a' : k === guide.i ? '#ffc27a' : 'rgba(143,179,201,0.35)'; gg.fill(); }
+  const lines = []; gg.font = FONT('500', 34); { let line = ''; for (const w of tr(st).split(' ')) { const ts = line ? line + ' ' + w : w; if (gg.measureText(ts).width > GW - 80 && line) { lines.push(line); line = w; } else line = ts; } lines.push(line); }
+  lines.slice(0, 6).forEach((l, k) => { gg.font = FONT('500', 34); gg.fillStyle = C.text; gg.fillText(l, 38, 128 + k * 46); });
+  if (guide.ok) { gg.font = FONT('800', 40); gg.fillStyle = '#7dff6a'; gg.fillText(t('bravo'), 38, GH - 118); }
+  const by = GH - 96, bw = (GW - 72 - 20) / 2;
+  if (st.final) { gButton('gclose', 36 + bw + 20, by, bw, 70, t('close'), endGuide, true); }
+  else { gButton('gskip', 36, by, bw, 70, t('skipGuide'), endGuide, false); gButton('gnext', 36 + bw + 20, by, bw, 70, st.check ? t('skipStep') : t('next'), guideNext, !st.check); }
+  guideTex.needsUpdate = true;
+}
+const gTarget = new THREE.Vector3(), gFwd = new THREE.Vector3();
+function placeGuide(snap) {
+  const cam = renderer.xr.getCamera(); cam.getWorldPosition(headTmp);
+  gFwd.set(0, 0, -1).applyQuaternion(cam.getWorldQuaternion(qTmp)); gFwd.y = 0; if (gFwd.lengthSq() < 1e-4) gFwd.set(0, 0, -1); gFwd.normalize().applyAxisAngle(UP, -0.42);
+  gTarget.copy(headTmp).addScaledVector(gFwd, 0.55); gTarget.y = headTmp.y + 0.02;
+  if (snap) guideMesh.position.copy(gTarget);
+}
+function updateGuide(dt) {
+  if (!guide.on) return;
+  // lazy follow: come back into view when the user turns away
+  const cam = renderer.xr.getCamera(); cam.getWorldPosition(headTmp);
+  const look = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.getWorldQuaternion(qTmp)); const toCard = guideMesh.position.clone().sub(headTmp).normalize();
+  if (look.dot(toCard) < 0.62 || guide.follow) { guide.follow = look.dot(toCard) < 0.93; placeGuide(false); guideMesh.position.lerp(gTarget, 1 - Math.pow(0.05, dt)); }
+  guideMesh.lookAt(headTmp);
+  const st = GUIDE[guide.i];
+  if (st.check && !guide.ok && st.check()) { guide.ok = true; guide.okT = 0; drawGuide(); }
+  if (guide.ok) { guide.okT += dt; if (guide.okT > 1.3) guideNext(); }
+}
+
 /* ============================== loop ============================== */
 const clock = new THREE.Clock();
-const tmpScale = new THREE.Vector3();
+const tmpScale = new THREE.Vector3(), prevMolPos = new THREE.Vector3();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.1);
   const xr = renderer.xr.isPresenting;
@@ -978,27 +1348,33 @@ renderer.setAnimationLoop(() => {
   if (xr) {
     for (const c of ctrls) {
       if (!c.userData.src) continue; setRay(c);
-      const ph = panelHit(); const len = ph ? ph.distance : 2; c.userData.line.scale.z = len;
+      const gh = guideHit(); if (gh) guideHover(gh.uv.x * GW, (1 - gh.uv.y) * GH); else if (guide.hoverOwner === c) guideHover(null, null); if (gh) guide.hoverOwner = c;
+      const ph = gh || panelOrHandleHit(); const len = ph ? ph.distance : 2; c.userData.line.scale.z = len;
       c.userData.dot.visible = !!ph; if (ph) c.userData.dot.position.copy(ph.point);
-      if (ph) panelHover(ph.uv.x * PW, (1 - ph.uv.y) * PH); else if (c === ctrls.find(q => q.userData.src)) panelHover(null, null);
+      if (ph && ph.object === panelMesh && !gh) { xrHover(ph.uv.x * PW, (1 - ph.uv.y) * PH); hoverOwner = c; } else if (hoverOwner === c) { hoverQuad.visible = false; hoverOwner = null; }
       const gp = c.userData.src.gamepad;
-      if (gp && gp.axes) {
+      if (gp && gp.axes && !(panelDrag && panelDrag.c === c)) {
         const ax = Math.abs(gp.axes[2] || 0) > Math.abs(gp.axes[0] || 0) ? gp.axes[2] : gp.axes[0];
         const ay = Math.abs(gp.axes[3] || 0) > Math.abs(gp.axes[1] || 0) ? gp.axes[3] : gp.axes[1];
-        if (Math.abs(ay) > 0.35) zoomBy(1 - ay * dt * 1.4);
-        if (Math.abs(ax) > 0.35) molRoot.rotateOnWorldAxis(UP, ax * dt * 1.6);
+        if (Math.abs(ay) > 0.35) zoomBy(1 - ay * dt * 0.9);
+        if (Math.abs(ax) > 0.35) { molRoot.rotateOnWorldAxis(UP, ax * dt * 1.6); guideStats.rot += Math.abs(ax * dt * 1.6); }
       }
     }
-    if (grabs.length === 1) { tmpM.multiplyMatrices(grabs[0].matrixWorld, grabRel); tmpM.decompose(molRoot.position, molRoot.quaternion, tmpScale); }
+    if (panelDrag) updatePanelDrag(dt);
+    updateHands();
+    if (grabs.length === 1) { prevMolPos.copy(molRoot.position); tmpM.multiplyMatrices(grabs[0].matrixWorld, grabRel); tmpM.decompose(molRoot.position, molRoot.quaternion, tmpScale); guideStats.grabMoved += prevMolPos.distanceTo(molRoot.position); }
     else if (grabs.length >= 2) { const d = grabs[0].position.distanceTo(grabs[1].position); S.userZoom = THREE.MathUtils.clamp(twoZ0 * d / twoD0, 0.15, 14); }
+    updateGuide(dt);
   } else controls.update();
   // label sizing (constant size in meters)
   const sw = scaler.scale.x; const H = xr ? 0.016 : 0.02;
-  for (const sp of labelSprites) { sp.scale.set(H * sp.userData.aspect / sw, H / sw, 1); sp.center.set(0.5, -((sp.userData.lift || 1) * 0.25)); }
+  groupTick(dt, xr);
+  for (const sp of [...labelSprites, ...persistentLabels]) { sp.scale.set(H * sp.userData.aspect / sw, H / sw, 1); sp.center.set(0.5, -((sp.userData.lift || 1) * 0.25)); }
   renderer.render(scene, camera);
 });
 
 updateDom(); drawPanel(); resetView();
+window.__biomol = { group: () => ({ role: G.role, room: G.room, status: G.status, students: G.students.size, follow: G.follow }), guide: () => ({ on: guide.on, i: guide.i }), pointer: () => [G.pointer, markGroup.visible, G.lastPose] };
 // start with something to look at
 loadPDB('1HVR');
 </script>
