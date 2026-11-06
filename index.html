@@ -45,7 +45,7 @@ const TXT = {
     reset:'Resetează', recenter:'Adu aici', spin:'Rotire', ready:'Gata',
     xrAR:'Intră în AR', xrVR:'Intră în VR', xrNo:'AR disponibil pe Magic Leap 2 (WebXR)',
     hint:'Mouse: stânga = rotește, dreapta = mută, rotiță = zoom. Click pe un atom (fără să tragi) = folosește unealta aleasă.',
-    help:'Bumper: ține apăsat ca să apuci molecula (sau meniul, dacă țintești spre el). Touchpad: sus/jos = mărire, stânga/dreapta = rotire. Cu mâinile: apasă butoanele cu degetul, prinde (pinch) ca să apuci.',
+    help:'Bumper: ține apăsat ca să apuci molecula (sau meniul, dacă țintești spre el). Touchpad: sus/jos = mărire, stânga/dreapta = rotire. Cu mâinile: apasă butoanele cu degetul; fă pinch în interiorul moleculei ca s-o apuci și rotește din încheietură; cu ambele mâini o rotești, o muți și o mărești.',
     chain:'lanț', atom:'atom', protein:'proteină', nucleic:'acid nucleic', ligand:'ligand', ion:'ion', water:'apă',
     hydrophobic:'hidrofob', polar:'polar', basic:'bazic (+)', acidic:'acid (−)',
     atoms:'atomi', residues:'resturi', chains:'lanțuri', offline:'(merge și fără internet)',
@@ -73,7 +73,7 @@ const TXT = {
     reset:'Reset', recenter:'Bring here', spin:'Spin', ready:'Ready',
     xrAR:'Enter AR', xrVR:'Enter VR', xrNo:'AR available on Magic Leap 2 (WebXR)',
     hint:'Mouse: left = rotate, right = pan, wheel = zoom. Click an atom (without dragging) = use the selected tool.',
-    help:'Bumper: hold to grab the molecule (or the menu, if you point at it). Touchpad: up/down = scale, left/right = rotate. With hands: press buttons with your finger, pinch to grab.',
+    help:'Bumper: hold to grab the molecule (or the menu, if you point at it). Touchpad: up/down = scale, left/right = rotate. With hands: press buttons with your finger; pinch inside the molecule to grab it and turn your wrist to rotate; with both hands you rotate, move and scale it.',
     chain:'chain', atom:'atom', protein:'protein', nucleic:'nucleic acid', ligand:'ligand', ion:'ion', water:'water',
     hydrophobic:'hydrophobic', polar:'polar', basic:'basic (+)', acidic:'acidic (−)',
     atoms:'atoms', residues:'residues', chains:'chains', offline:'(works offline)',
@@ -995,14 +995,14 @@ let hoverOwner = null;
 const ctrls = []; const grabs = []; let grabRel = new THREE.Matrix4(), twoD0 = 1, twoZ0 = 1;
 const rayGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
 for (let k = 0; k < 2; k++) {
-  const c = renderer.xr.getController(k);
+  const c = renderer.xr.getController(k); c.userData.k = k;
   const line = new THREE.Line(rayGeo, new THREE.LineBasicMaterial({ color: 0x9ff0ff, transparent: true, opacity: 0.85 })); line.scale.z = 2; c.add(line); c.userData.line = line;
   const dot = new THREE.Mesh(new THREE.SphereGeometry(0.006, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff })); dot.visible = false; scene.add(dot); c.userData.dot = dot;
   c.addEventListener('connected', e => { c.userData.src = e.data; line.visible = !!e.data.targetRayMode && e.data.targetRayMode !== 'screen'; });
   c.addEventListener('disconnected', () => { c.userData.src = null; release(c); dot.visible = false; });
   c.addEventListener('selectstart', () => onSelect(c));
   c.addEventListener('selectend', () => { release(c); endPanelDrag(c); });
-  c.addEventListener('squeezestart', () => { setRay(c); const h = panelOrHandleHit(); if (h) startPanelDrag(c, h); else startGrab(c); });
+  c.addEventListener('squeezestart', () => { if (ignoredHand(c)) return; setRay(c); const h = panelOrHandleHit(); if (h) startPanelDrag(c, h); else startGrab(c); });
   c.addEventListener('squeezeend', () => { release(c); endPanelDrag(c); });
   scene.add(c); ctrls.push(c);
 }
@@ -1028,6 +1028,9 @@ function molSphereHit() {
 }
 function buzz(c) { try { c.userData.src?.gamepad?.hapticActuators?.[0]?.pulse(0.35, 25); } catch (e) {} }
 function onSelect(c) {
+  if (ignoredHand(c)) return;
+  // hands: pinching inside the molecule grabs it directly (no ray needed)
+  if (c.userData.src && c.userData.src.hand && mol && pinchInsideMolecule(c)) { startGrab(c); return; }
   setRay(c);
   const gh = guideHit(); if (gh) { guidePress(gh.uv.x * GW, (1 - gh.uv.y) * GH); buzz(c); return; }
   const hh = handleHit(); if (hh) { startPanelDrag(c, hh); return; }
@@ -1037,11 +1040,30 @@ function onSelect(c) {
   if (S.tool === 'grab') { if (molSphereHit()) { startGrab(c); buzz(c); } return; }
   const i = pickWithRay(); if (i !== null) { onPickAtom(i); buzz(c); }
 }
-function startGrab(c) { if (grabs.includes(c)) return; grabs.push(c); refreshGrab(); }
+let grabSettle = 0;
+function startGrab(c) { if (grabs.includes(c)) return; grabs.push(c); refreshGrab(); if (c.userData.src && c.userData.src.hand) grabSettle = 4; }
+let ctrlPresent = false;
+function controllerPresent() { const ses = renderer.xr.getSession(); if (!ses) return false; for (const src of ses.inputSources) if (!src.hand && src.gamepad && src.targetRayMode === 'tracked-pointer') return true; return false; }
+function ignoredHand(c) { return !!(c.userData.src && c.userData.src.hand && ctrlPresent); }
+const _pa = new THREE.Vector3(), _pb = new THREE.Vector3(), _q = new THREE.Quaternion(), _one = new THREE.Vector3(1, 1, 1), _mc = new THREE.Vector3();
+function handOf(c) { const h = hands[c.userData.k]; if (!h || !h.active) return null; const J = h.hand.joints; if (!J || !J['index-finger-tip'] || !J['thumb-tip'] || !J['wrist'] || !J['index-finger-tip'].visible) return null; return J; }
+function grabPoint(c, out) { const J = c.userData.src && c.userData.src.hand ? handOf(c) : null; if (J) { const kn = J['index-finger-phalanx-proximal'] || J['wrist']; return kn.getWorldPosition(out); } return out.setFromMatrixPosition(c.matrixWorld); }
+function pinchPoint(c, out) { const J = handOf(c); J['index-finger-tip'].getWorldPosition(_pa); J['thumb-tip'].getWorldPosition(_pb); return out.addVectors(_pa, _pb).multiplyScalar(0.5); }
+function grabMatrix(c, out) {
+  const J = c.userData.src && c.userData.src.hand ? handOf(c) : null;
+  if (J) { grabPoint(c, _mc); J['wrist'].getWorldQuaternion(_q); return out.compose(_mc, _q, _one); }
+  return out.copy(c.matrixWorld);
+}
+function pinchInsideMolecule(c) { if (!handOf(c)) return false; pinchPoint(c, _mc); const center = molRoot.getWorldPosition(new THREE.Vector3()); return _mc.distanceTo(center) < Math.max(0.06, mol.radius * scaler.scale.x * 1.05); }
+const two = { a0: new THREE.Vector3(), b0: new THREE.Vector3(), v0: new THREE.Vector3(), mid0: new THREE.Vector3(), pos0: new THREE.Vector3(), q0: new THREE.Quaternion(), z0: 1 };
+const _gm = new THREE.Matrix4(), _v = new THREE.Vector3(), _mid = new THREE.Vector3(), _rq = new THREE.Quaternion(), _off = new THREE.Vector3();
 function release(c) { const k = grabs.indexOf(c); if (k >= 0) { grabs.splice(k, 1); refreshGrab(); } }
 function refreshGrab() {
-  if (grabs.length === 1) { molRoot.updateMatrixWorld(); grabs[0].updateMatrixWorld(); grabRel.copy(grabs[0].matrixWorld).invert().multiply(molRoot.matrixWorld); }
-  else if (grabs.length >= 2) { twoD0 = Math.max(0.02, grabs[0].position.distanceTo(grabs[1].position)); twoZ0 = S.userZoom; }
+  if (grabs.length === 1) { molRoot.updateMatrixWorld(); grabs[0].updateMatrixWorld(); grabRel.copy(grabMatrix(grabs[0], _gm)).invert().multiply(molRoot.matrixWorld); }
+  else if (grabs.length >= 2) {
+    grabPoint(grabs[0], two.a0); grabPoint(grabs[1], two.b0); two.v0.subVectors(two.b0, two.a0); two.mid0.addVectors(two.a0, two.b0).multiplyScalar(0.5);
+    two.pos0.copy(molRoot.position); two.q0.copy(molRoot.quaternion); two.z0 = S.userZoom;
+  }
 }
 
 /* ============================== hands ============================== */
@@ -1067,6 +1089,7 @@ for (let k = 0; k < 2; k++) {
 const jp = new THREE.Vector3(), cJ = new THREE.Color(), tipLocal = new THREE.Vector3(), tipW = new THREE.Vector3(), thumbW = new THREE.Vector3();
 function updateHands() {
   for (const h of hands) {
+    if (ctrlPresent) { h.vis.visible = false; h.poked = h.pokedG = false; continue; }
     const J = h.hand.joints; if (!h.active || !J || !J['wrist'] || !J['index-finger-tip'] || !J['index-finger-tip'].visible) { h.vis.visible = false; if (h.ctrl) h.ctrl.userData.line.visible = true; continue; }
     h.vis.visible = true;
     J['index-finger-tip'].getWorldPosition(tipW); J['thumb-tip'].getWorldPosition(thumbW);
@@ -1275,7 +1298,7 @@ function drawRoomPad(y) {
 /* ============================== first-use guide (AR) ============================== */
 const GUIDE = [
   { ro:'Bun venit! Molecula plutește în fața ta. Mișcă-te puțin și privește-o din lateral, ca pe un obiect adevărat.', en:'Welcome! The molecule floats in front of you. Move around a little and look at it from the side, like a real object.' },
-  { ro:'Apucă molecula: ține apăsat bumperul (butonul lateral) și mișcă mâna. Cu mâinile: prinde-o cu un pinch (degetul mare + arătătorul).', en:'Grab the molecule: hold the bumper (side button) and move your hand. With hands: pinch it (thumb + index finger).', check: () => guideStats.grabMoved > 0.12 },
+  { ro:'Apucă molecula: ține apăsat bumperul (butonul lateral) și mișcă mâna. Cu mâinile: du mâna în moleculă, fă pinch (degetul mare + arătătorul) și rotește încheietura. Cu ambele mâini în pinch o rotești și o mărești.', en:'Grab the molecule: hold the bumper (side button) and move your hand. With hands: reach into the molecule, pinch (thumb + index finger) and turn your wrist. Pinch with both hands to rotate and scale it.', check: () => guideStats.grabMoved > 0.12 },
   { ro:'Mărește sau micșorează: glisează pe touchpad în sus sau în jos. Poți folosi și butoanele + și − din meniu.', en:'Zoom in or out: swipe up or down on the touchpad. You can also use the + and − buttons in the menu.', check: () => Math.abs(Math.log(S.userZoom / guideStats.zoom0)) > 0.3 },
   { ro:'Rotește molecula: glisează pe touchpad la stânga sau la dreapta.', en:'Rotate the molecule: swipe left or right on the touchpad.', check: () => guideStats.rot > 0.8 },
   { ro:'Meniul: țintește un buton cu raza și apasă trăgaciul, sau atinge-l cu degetul arătător. Deschide fila „Unelte”.', en:'The menu: point at a button and pull the trigger, or touch it with your index finger. Open the “Tools” tab.', check: () => UI.tab === 'tools' },
@@ -1346,8 +1369,11 @@ renderer.setAnimationLoop(() => {
   const zl = xr ? 1 + (zoomLesson - 1) * 0.55 : zoomLesson; const targetS = fitScale * zl * S.userZoom; const cs = scaler.scale.x; scaler.scale.setScalar(cs + (targetS - cs) * (1 - Math.pow(0.001, dt)));
   if (S.spin && !grabs.length) molRoot.rotateOnWorldAxis(UP, dt * 0.35);
   if (xr) {
+    ctrlPresent = controllerPresent();
     for (const c of ctrls) {
-      if (!c.userData.src) continue; setRay(c);
+      if (!c.userData.src) continue;
+      if (ignoredHand(c)) { c.userData.line.visible = false; c.userData.dot.visible = false; continue; }
+      setRay(c);
       const gh = guideHit(); if (gh) guideHover(gh.uv.x * GW, (1 - gh.uv.y) * GH); else if (guide.hoverOwner === c) guideHover(null, null); if (gh) guide.hoverOwner = c;
       const ph = gh || panelOrHandleHit(); const len = ph ? ph.distance : 2; c.userData.line.scale.z = len;
       c.userData.dot.visible = !!ph; if (ph) c.userData.dot.position.copy(ph.point);
@@ -1362,8 +1388,23 @@ renderer.setAnimationLoop(() => {
     }
     if (panelDrag) updatePanelDrag(dt);
     updateHands();
-    if (grabs.length === 1) { prevMolPos.copy(molRoot.position); tmpM.multiplyMatrices(grabs[0].matrixWorld, grabRel); tmpM.decompose(molRoot.position, molRoot.quaternion, tmpScale); guideStats.grabMoved += prevMolPos.distanceTo(molRoot.position); }
-    else if (grabs.length >= 2) { const d = grabs[0].position.distanceTo(grabs[1].position); S.userZoom = THREE.MathUtils.clamp(twoZ0 * d / twoD0, 0.15, 14); }
+    if (grabSettle > 0 && grabs.length) { grabSettle--; refreshGrab(); }
+    else if (grabs.length === 1) {
+      prevMolPos.copy(molRoot.position); tmpM.multiplyMatrices(grabMatrix(grabs[0], _gm), grabRel);
+      const isHand = !!(grabs[0].userData.src && grabs[0].userData.src.hand);
+      if (isHand) { tmpM.decompose(_v, _rq, tmpScale); molRoot.position.lerp(_v, 0.55); molRoot.quaternion.slerp(_rq, 0.45); } // smooth hand jitter
+      else tmpM.decompose(molRoot.position, molRoot.quaternion, tmpScale);
+      guideStats.grabMoved += prevMolPos.distanceTo(molRoot.position);
+    } else if (grabs.length >= 2) {
+      // two hands / controllers: move (midpoint), rotate (line between hands), scale (distance)
+      grabPoint(grabs[0], _pa); grabPoint(grabs[1], _pb); _v.subVectors(_pb, _pa); _mid.addVectors(_pa, _pb).multiplyScalar(0.5);
+      const k = THREE.MathUtils.clamp(_v.length() / Math.max(0.02, two.v0.length()), 0.15 / two.z0, 14 / two.z0);
+      _rq.setFromUnitVectors(_off.copy(two.v0).normalize(), _v.clone().normalize());
+      _off.subVectors(two.pos0, two.mid0).applyQuaternion(_rq).multiplyScalar(k);
+      molRoot.position.lerp(_v.copy(_mid).add(_off), 0.6);
+      molRoot.quaternion.slerp(_q.copy(_rq).multiply(two.q0), 0.6);
+      S.userZoom = two.z0 * k; guideStats.rot += 0.02;
+    }
     updateGuide(dt);
   } else controls.update();
   // label sizing (constant size in meters)
@@ -1374,7 +1415,7 @@ renderer.setAnimationLoop(() => {
 });
 
 updateDom(); drawPanel(); resetView();
-window.__biomol = { group: () => ({ role: G.role, room: G.room, status: G.status, students: G.students.size, follow: G.follow }), guide: () => ({ on: guide.on, i: guide.i }), pointer: () => [G.pointer, markGroup.visible, G.lastPose] };
+window.__biomol = { group: () => ({ role: G.role, room: G.room, status: G.status, students: G.students.size, follow: G.follow }), guide: () => ({ on: guide.on, i: guide.i }), mol: () => ({ q: molRoot.quaternion.toArray().map(v => +v.toFixed(3)), p: molRoot.position.toArray().map(v => +v.toFixed(3)), z: +S.userZoom.toFixed(3), grabs: grabs.length, pts: grabs.map(c => [c.userData.k, !!(c.userData.src && c.userData.src.hand), !!handOf(c), grabPoint(c, new THREE.Vector3()).toArray().map(v => +v.toFixed(3))]), v0: two.v0.toArray().map(v => +v.toFixed(3)) }), pointer: () => [G.pointer, markGroup.visible, G.lastPose] };
 // start with something to look at
 loadPDB('1HVR');
 </script>
