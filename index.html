@@ -45,7 +45,7 @@ const TXT = {
     reset:'Resetează', recenter:'Adu aici', spin:'Rotire', ready:'Gata',
     xrAR:'Intră în AR', xrVR:'Intră în VR', xrNo:'AR disponibil pe Magic Leap 2 (WebXR)',
     hint:'Mouse: stânga = rotește, dreapta = mută, rotiță = zoom. Click pe un atom (fără să tragi) = folosește unealta aleasă.',
-    help:'Când raza e pe moleculă, molecula se luminează și raza devine verde: poți apuca. Bumper: ține apăsat ca să apuci molecula (sau meniul, dacă țintești spre el). Touchpad: sus/jos = mărire, stânga/dreapta = rotire. Mâinile: apasă butoanele cu degetul; pinch în moleculă = o apuci și o rotești din încheietură; cu ambele mâini (sau controller + mâna liberă) o rotești, o muți și o mărești.',
+    help:'Apuci molecula (pinch/trăgaci pe ea) = o muți și o rotești. Apuci aerul lângă ea și tragi = o rotești. Când raza e pe moleculă, ea se luminează: poți apuca. Bumper: ține apăsat ca să apuci molecula (sau meniul, dacă țintești spre el). Touchpad: sus/jos = mărire, stânga/dreapta = rotire. Mâinile: apasă butoanele cu degetul; pinch în moleculă = o apuci și o rotești din încheietură; cu ambele mâini (sau controller + mâna liberă) o rotești, o muți și o mărești.',
     chain:'lanț', atom:'atom', protein:'proteină', nucleic:'acid nucleic', ligand:'ligand', ion:'ion', water:'apă',
     hydrophobic:'hidrofob', polar:'polar', basic:'bazic (+)', acidic:'acid (−)',
     atoms:'atomi', residues:'resturi', chains:'lanțuri', offline:'(merge și fără internet)',
@@ -73,7 +73,7 @@ const TXT = {
     reset:'Reset', recenter:'Bring here', spin:'Spin', ready:'Ready',
     xrAR:'Enter AR', xrVR:'Enter VR', xrNo:'AR available on Magic Leap 2 (WebXR)',
     hint:'Mouse: left = rotate, right = pan, wheel = zoom. Click an atom (without dragging) = use the selected tool.',
-    help:'When the ray is on the molecule, it glows and the ray turns green: you can grab it. Bumper: hold to grab the molecule (or the menu, if you point at it). Touchpad: up/down = scale, left/right = rotate. Hands: press buttons with your finger; pinch inside the molecule = grab it and turn your wrist to rotate; with both hands (or controller + free hand) you rotate, move and scale it.',
+    help:'Grab the molecule (pinch/trigger on it) = move and rotate it. Grab the air next to it and drag = rotate it. When the ray is on the molecule, it glows: you can grab it. Bumper: hold to grab the molecule (or the menu, if you point at it). Touchpad: up/down = scale, left/right = rotate. Hands: press buttons with your finger; pinch inside the molecule = grab it and turn your wrist to rotate; with both hands (or controller + free hand) you rotate, move and scale it.',
     chain:'chain', atom:'atom', protein:'protein', nucleic:'nucleic acid', ligand:'ligand', ion:'ion', water:'water',
     hydrophobic:'hydrophobic', polar:'polar', basic:'basic (+)', acidic:'acidic (−)',
     atoms:'atoms', residues:'residues', chains:'chains', offline:'(works offline)',
@@ -1055,7 +1055,7 @@ for (let k = 0; k < 4; k++) {
   c.addEventListener('connected', e => { c.userData.src = e.data; line.visible = !!e.data.targetRayMode && e.data.targetRayMode !== 'screen'; });
   c.addEventListener('disconnected', () => { c.userData.src = null; release(c); dot.visible = false; line.visible = false; c.userData.fo = null; c.userData.hoverAtom = null; });
   c.addEventListener('selectstart', () => onSelect(c));
-  c.addEventListener('selectend', () => { release(c); endPanelDrag(c); });
+  c.addEventListener('selectend', () => { release(c); endPanelDrag(c); airRot.delete(c); });
   c.addEventListener('squeezestart', () => { if (ignoredHand(c) || !rayHand(c)) return; setRayPast(c); const h = panelOrHandleHit(); if (h) startPanelDrag(c, h); else startGrab(c); });
   c.addEventListener('squeezeend', () => { release(c); endPanelDrag(c); });
   scene.add(c); ctrls.push(c);
@@ -1102,6 +1102,26 @@ function updatePanelDrag(dt) {
   panelMesh.position.lerp(p, 0.6);
   const cam = renderer.xr.getCamera(); cam.getWorldPosition(lastHead); panelMesh.lookAt(lastHead);
 }
+const airRot = new Map(); const _arP = new THREE.Vector3(), _arD = new THREE.Vector3(), _camR = new THREE.Vector3();
+function nearPanel(c) { const h = hands[c.userData.k]; if (!h || !handOf(c)) return false; const J = h.hand.joints; J['index-finger-tip'].getWorldPosition(_arP); panelMesh.worldToLocal(_arP); return Math.abs(_arP.x) < PANEL_W / 2 + 0.05 && Math.abs(_arP.y) < PANEL_H / 2 + 0.05 && Math.abs(_arP.z) < 0.12; }
+function airPoint(c, out) {
+  if (c.userData.src && c.userData.src.hand && handOf(c)) return grabPoint(c, out);
+  const u = c.userData; const o = u.o || _arD.setFromMatrixPosition(c.matrixWorld); molRoot.getWorldPosition(out); const dist = THREE.MathUtils.clamp(out.distanceTo(o), 0.3, 2);
+  setRay(c); return out.copy(raycaster.ray.origin).addScaledVector(raycaster.ray.direction, dist);
+}
+function startAirRotate(c) { if (!mol) return; const st = { p: airPoint(c, new THREE.Vector3()), f: null }; st.f = st.p.clone(); airRot.set(c, st); tick(c); }
+function updateAirRotate() {
+  if (!airRot.size || !mol) return; const cam = renderer.xr.getCamera(); _camR.set(1, 0, 0).applyQuaternion(cam.getWorldQuaternion(_q)); _camR.y = 0; _camR.normalize();
+  for (const [c, st] of airRot) {
+    if (!c.userData.src || grabs.includes(c)) { airRot.delete(c); continue; }
+    airPoint(c, _arP); st.f.lerp(_arP, 0.5); _arD.subVectors(st.f, st.p); st.p.copy(st.f);
+    const isHand = !!(c.userData.src.hand); const K = isHand ? 7 : 5;   // ~15 cm of hand movement = ~60°
+    const yaw = _arD.dot(_camR) * K, pitch = -_arD.y * K;
+    if (Math.abs(yaw) > 1e-4) molRoot.rotateOnWorldAxis(UP, yaw);
+    if (Math.abs(pitch) > 1e-4) molRoot.rotateOnWorldAxis(_camR, pitch);
+    guideStats.rot += Math.abs(yaw) + Math.abs(pitch);
+  }
+}
 function grabRadius() { return Math.max(0.05, mol.radius * scaler.scale.x * 0.95); }
 const _gs = new THREE.Sphere();
 function molSphereHit(out) {
@@ -1121,7 +1141,7 @@ function setMolState(st) {
   cartoonMat.emissive.setHex(EMI[st]);
 }
 function updateHalo() {
-  const st = grabs.length ? 'grab' : (molHoverNow ? 'hover' : 'idle'); setMolState(st);
+  const st = (grabs.length || airRot.size) ? 'grab' : (molHoverNow ? 'hover' : 'idle'); setMolState(st);
   halo.visible = false; return; // circle removed (distracting): the molecule glow + green ray show the state
   halo.visible = true; molRoot.getWorldPosition(halo.position); halo.scale.setScalar(grabRadius());
   renderer.xr.getCamera().getWorldPosition(_cw); halo.lookAt(_cw);
@@ -1134,21 +1154,21 @@ function onSelect(c) {
   if (ignoredHand(c)) return;
   // hands: pinching inside the molecule grabs it directly (no ray needed)
   if (c.userData.src && c.userData.src.hand && mol && pinchInsideMolecule(c)) { startGrab(c); return; }
-  if (!rayHand(c)) return;
+  if (!rayHand(c)) { if (!nearPanel(c)) startAirRotate(c); return; }
   setRayPast(c);
   const gh = guideHit(); if (gh) { guidePress(gh.uv.x * GW, (1 - gh.uv.y) * GH); buzz(c); return; }
   const hh = handleHit(); if (hh) { startPanelDrag(c, hh); return; }
   const ph = panelHit();
   if (ph) { const x = ph.uv.x * PW, y = (1 - ph.uv.y) * PH; const b = buttonAt(x, y, XR_TOL); if (b) { b.act(); buzz(c); } else if (y < 190) startPanelDrag(c, ph); return; }
   if (!mol) return;
-  if (S.tool === 'grab') { if (molSphereHit()) { startGrab(c); buzz(c); } return; }
+  if (S.tool === 'grab') { if (molSphereHit()) { startGrab(c); buzz(c); } else startAirRotate(c); return; }
   let i = pastHover(c); if (i === null) i = hoverPick(); if (i === null) i = pickWithRay();
-  if (i !== null) { onPickAtom(i); buzz(c); }
+  if (i !== null) { onPickAtom(i); buzz(c); } else startAirRotate(c);
 }
 let grabSettle = 0;
 function startGrab(c) { if (grabs.includes(c)) return; grabs.push(c); refreshGrab(); if (c.userData.src && c.userData.src.hand) grabSettle = 4; }
 let ctrlPresent = false;
-function controllerPresent() { const ses = renderer.xr.getSession(); if (!ses) return false; for (const src of ses.inputSources) if (!src.hand && src.gamepad && src.targetRayMode === 'tracked-pointer') return true; return false; }
+function controllerPresent() { const ses = renderer.xr.getSession(); if (!ses) return false; for (const src of ses.inputSources) if (!src.hand && src.targetRayMode === 'tracked-pointer') return true; return false; }
 const busyHand = [false, false, false, false]; let ctrlHeld = false;
 // controllers on headsets without hand tracking: never hide their ray (no way to tell if held)
 function ctrlPresentRecently(c) { return hands.some(h => h.active); }
@@ -1162,32 +1182,43 @@ const _cq = new THREE.Quaternion();
 // A controller that is held always moves a little (hand tremor) or has buttons/touchpad in use;
 // one lying on the table is perfectly still. For a held controller we hide the hand holding it:
 // the hand with the same handedness, or else the hand whose palm is closest to it.
+const CURL_F = ['middle-finger', 'ring-finger', 'pinky-finger'];
+// average distance knuckle -> fingertip for middle/ring/pinky: ~8 cm open, ~3-4 cm wrapped around a handle
+function handCurl(J) { let sum = 0, n = 0; for (const f of CURL_F) { const tip = J[f + '-tip'], kn = J[f + '-phalanx-proximal']; if (!tip || !kn || !tip.visible) continue; tip.getWorldPosition(_pa); kn.getWorldPosition(_pb); sum += _pa.distanceTo(_pb); n++; } return n ? sum / n : 1; }
+// Which hand holds the controller?  1) a hand whose fingers are wrapped around a handle (works even if the
+// headset reports nothing useful about the controller), 2) the hand on the controller's side, 3) the palm next to it.
+// The other hand stays fully active (dots, poke, pinch).
 function updateBusyHands() {
-  busyHand.fill(false); ctrlHeld = false; if (!ctrlPresent) return;
+  busyHand.fill(false); ctrlHeld = false;
+  for (const h of hands) {
+    if (!h.active) { h.gripping = false; continue; } const J = h.hand.joints; if (!J || !J['wrist'] || !J['wrist'].visible) continue;
+    h.curl = handCurl(J);
+    // holding a controller: middle/ring/pinky wrapped AND index bent on the trigger AND not pinching
+    // (pointing = index straight -> not a grip; pinch = thumb on index -> not a grip)
+    let idx = 1, pin = 1; if (J['index-finger-tip'] && J['index-finger-phalanx-proximal'] && J['thumb-tip']) { J['index-finger-tip'].getWorldPosition(_pa); J['index-finger-phalanx-proximal'].getWorldPosition(_pb); idx = _pa.distanceTo(_pb); J['thumb-tip'].getWorldPosition(_pb); pin = _pa.distanceTo(_pb); }
+    h.idx = idx; const gripNow = h.curl < 0.069 && idx < 0.068 && pin > 0.025, gripOff = h.curl > 0.076 || idx > 0.075 || pin < 0.018;
+    if (h.gripping) { if (gripOff) h.gripping = false; } else if (gripNow) h.gripping = true;
+  }
+  if (!ctrlPresent) return;
   const now = performance.now();
   for (const c of ctrls) {
-    const src = c.userData.src; if (!src || src.hand || !src.gamepad) continue; const u = c.userData;
+    const src = c.userData.src; if (!src || src.hand) continue; const u = c.userData;
     _cp.setFromMatrixPosition(c.matrixWorld); _cq.setFromRotationMatrix(c.matrixWorld);
     if (!u.refPos) { u.refPos = _cp.clone(); u.refQ = _cq.clone(); u.lastMove = now; }
     if (u.refPos.distanceToSquared(_cp) > 0.001 * 0.001 || u.refQ.angleTo(_cq) > 0.005) { u.refPos.copy(_cp); u.refQ.copy(_cq); u.lastMove = now; }
-    // a hand wrapped around the controller = held, even if both are perfectly still
-    let near = null, nd = 0.2; const gr = u.grip;
-    for (const h of hands) { if (!h.active) continue; const J = h.hand.joints; const pj = J && (J['middle-finger-metacarpal'] || J['wrist']); if (!pj || !pj.visible) continue; pj.getWorldPosition(_palm);
-      let d = _palm.distanceTo(_cp); if (gr && gr.visible) d = Math.min(d, _palm.distanceTo(gr.getWorldPosition(_hp))); if (d < nd) { nd = d; near = h; } }
-    if (near) u.lastMove = now;
-    const gp = src.gamepad; for (const b of gp.buttons) if (b.pressed || b.touched) { u.lastMove = now; break; }
-    if (gp.axes) for (const a of gp.axes) if (Math.abs(a) > 0.1) { u.lastMove = now; break; }
-    u.held = false;
-    if (now - u.lastMove > 10000) continue; // still for 10 s and no hand on it: put down, both hands free
-    u.held = true; ctrlHeld = true;
-    const want = (src.handedness === 'left' || src.handedness === 'right') ? src.handedness : S.dom;
-    let best = hands.find(h => h.active && h.handed === want) || null, bd = 0.45;
-    if (!best) for (const h of hands) { // headsets that don't report handedness: nearest palm
-      if (!h.active) continue; const J = h.hand.joints; const pj = J && (J['middle-finger-metacarpal'] || J['wrist']); if (!pj || !pj.visible) continue;
-      pj.getWorldPosition(_palm); const d = _palm.distanceTo(_cp); if (d < bd) { bd = d; best = h; }
+    const gp = src.gamepad;
+    if (gp) { for (const b of gp.buttons) if (b.pressed || b.touched) { u.lastMove = now; break; } if (gp.axes) for (const a of gp.axes) if (Math.abs(a) > 0.1) { u.lastMove = now; break; } }
+    let holder = null, hd = 0.3;
+    for (const h of hands) { // gripping hand closest to the controller
+      if (!h.active || !h.gripping) continue; const J = h.hand.joints; const pj = J['middle-finger-metacarpal'] || J['wrist']; pj.getWorldPosition(_palm);
+      const d = _palm.distanceTo(_cp); if (d < hd) { hd = d; holder = h; }
     }
-    if (best) busyHand[best.k] = true;
-    if (near) busyHand[near.k] = true;
+    if (!holder) { const g = hands.filter(h => h.active && h.gripping); if (g.length === 1) holder = g[0]; }
+    if (!holder && (src.handedness === 'left' || src.handedness === 'right') && now - u.lastMove < 10000) holder = hands.find(h => h.active && h.handed === src.handedness) || null;
+    if (!holder && now - u.lastMove < 10000) { let bd = 0.16; for (const h of hands) { if (!h.active) continue; const J = h.hand.joints; const pj = J && (J['middle-finger-metacarpal'] || J['wrist']); if (!pj || !pj.visible) continue; pj.getWorldPosition(_palm); const d = _palm.distanceTo(_cp); if (d < bd) { bd = d; holder = h; } } }
+    if (holder) { busyHand[holder.k] = true; u.lastMove = now; }
+    u.held = !!holder || now - u.lastMove < 10000; u.holder = holder;
+    if (u.held) ctrlHeld = true;
   }
 }
 const _pa = new THREE.Vector3(), _pb = new THREE.Vector3(), _q = new THREE.Quaternion(), _one = new THREE.Vector3(1, 1, 1), _mc = new THREE.Vector3();
@@ -1236,7 +1267,7 @@ function updateHands() {
   for (const h of hands) {
     if (busyHand[h.k]) { h.pinch = 0; h.vis.visible = false; h.poked = h.pokedG = false; if (grabs.includes(h.ctrl)) release(h.ctrl); continue; }
     const J = h.hand.joints; if (!h.active || !J || !J['wrist'] || !J['index-finger-tip'] || !J['index-finger-tip'].visible) { h.vis.visible = false; h.pinch = 0; continue; }
-    h.vis.visible = S.hands !== 'off' && !ctrlHeld;
+    h.vis.visible = S.hands !== 'off';
     J['index-finger-tip'].getWorldPosition(tipW); J['thumb-tip'].getWorldPosition(thumbW);
     const pinch = THREE.MathUtils.clamp(1 - (tipW.distanceTo(thumbW) - 0.015) / 0.04, 0, 1); h.pinch = pinch;
     const pos = h.bones.geometry.attributes.position.array; const P = h.P; const skel = S.hands === 'skeleton';
@@ -1472,7 +1503,7 @@ const GUIDE = [
   { ro:'Bun venit! Molecula plutește în fața ta. Mișcă-te puțin și privește-o din lateral, ca pe un obiect adevărat.', en:'Welcome! The molecule floats in front of you. Move around a little and look at it from the side, like a real object.' },
   { ro:'Apucă molecula: ține apăsat bumperul (butonul lateral) și mișcă mâna. Cu mâinile: du mâna în moleculă, fă pinch (degetul mare + arătătorul) și rotește încheietura. Cu ambele mâini în pinch o rotești și o mărești.', en:'Grab the molecule: hold the bumper (side button) and move your hand. With hands: reach into the molecule, pinch (thumb + index finger) and turn your wrist. Pinch with both hands to rotate and scale it.', check: () => guideStats.grabMoved > 0.12 },
   { ro:'Mărește sau micșorează: glisează pe touchpad în sus sau în jos. Poți folosi și butoanele + și − din meniu.', en:'Zoom in or out: swipe up or down on the touchpad. You can also use the + and − buttons in the menu.', check: () => Math.abs(Math.log(S.userZoom / guideStats.zoom0)) > 0.3 },
-  { ro:'Rotește molecula: glisează pe touchpad la stânga sau la dreapta.', en:'Rotate the molecule: swipe left or right on the touchpad.', check: () => guideStats.rot > 0.8 },
+  { ro:'Rotește molecula: fă pinch (sau apasă trăgaciul) în aer, lângă moleculă, și trage mâna. Merge și cu touchpad-ul, stânga/dreapta.', en:'Rotate the molecule: pinch (or pull the trigger) in the air next to it and drag. The touchpad left/right works too.', check: () => guideStats.rot > 0.8 },
   { ro:'Meniul: țintește un buton cu raza și apasă trăgaciul, sau atinge-l cu degetul arătător. Deschide fila „Unelte”.', en:'The menu: point at a button and pull the trigger, or touch it with your index finger. Open the “Tools” tab.', check: () => UI.tab === 'tools' },
   { ro:'Alege „Info atom”, apoi țintește un atom și apasă trăgaciul. În meniu apar detaliile lui.', en:'Choose “Atom info”, then point at an atom and pull the trigger. Its details appear in the menu.', check: () => guideStats.picked },
   { ro:'Mută meniul acolo unde îți e comod: trage de bara de sub el.', en:'Move the menu where it is comfortable: drag the bar below it.', check: () => guideStats.dragged },
@@ -1538,8 +1569,8 @@ function updateDiag(xr) {
   const ses = renderer.xr.getSession(); if (!ses) return; const parts = [];
   for (const src of ses.inputSources) {
     const side = src.handedness === 'left' ? 'L' : src.handedness === 'right' ? 'R' : '?';
-    if (src.hand) { const h = hands.find(q => q.active && q.hand && renderer.xr.getHand(q.k) && q.handed === src.handedness); parts.push(`${t('dHand')} ${side}` + (h && busyHand[h.k] ? ` (${t('dHidden')})` : '')); }
-    else if (src.gamepad) { const c = ctrls.find(q => q.userData.src === src); parts.push(`${t('dCtrl')} ${side} (${c && c.userData.held ? t('dHeld') : t('dIdle')})`); }
+    if (src.hand) { const h = hands.find(q => q.active && q.handed === src.handedness); parts.push(`${t('dHand')} ${side} ${h && h.curl !== undefined ? (h.curl * 100).toFixed(1) + 'cm' : ''}${h && h.gripping ? '✊' : ''}` + (h && busyHand[h.k] ? ` (${t('dHidden')})` : '')); }
+    else if (src.targetRayMode === 'tracked-pointer') { const c = ctrls.find(q => q.userData.src === src); parts.push(`${t('dCtrl')} ${side}${src.gamepad ? '' : ' (no gamepad)'} (${c && c.userData.held ? t('dHeld') : t('dIdle')})`); }
     else parts.push(src.targetRayMode);
   }
   const txt = parts.join(' · '); if (txt !== diagText) { diagText = txt; if (UI.tab === 'tools') drawPanel(); }
@@ -1566,7 +1597,7 @@ renderer.setAnimationLoop(() => {
       setRay(c);
       const L = c.userData.line; L.position.copy(c.userData.o); L.quaternion.setFromUnitVectors(NEG_Z, c.userData.d);
       {
-        const src = c.userData.src, active = grabs.includes(c) || (panelDrag && panelDrag.c === c);
+        const src = c.userData.src, active = grabs.includes(c) || airRot.has(c) || (panelDrag && panelDrag.c === c);
         let rayOn;
         if (src.hand) { const hh = hands[c.userData.k]; rayOn = active || (hh && hh.pinch > 0.35); }
         else rayOn = active || !!c.userData.held || !ctrlPresentRecently(c);
@@ -1604,6 +1635,7 @@ renderer.setAnimationLoop(() => {
       }
     }
     if (panelDrag) updatePanelDrag(dt);
+    updateAirRotate();
     updateHands();
     if (grabSettle > 0 && grabs.length) { grabSettle--; refreshGrab(); }
     else if (grabs.length === 1) {
@@ -1634,7 +1666,7 @@ renderer.setAnimationLoop(() => {
 });
 
 updateDom(); drawPanel(); resetView();
-if (new URLSearchParams(location.search).has('debug')) window.__bmdbg = { S, LESSONS, loadPDB, loadSmall, startLesson, applyStep, exitLesson, rebuild, refreshOverlay, renderer, get mol() { return mol; }, get lesson() { return lesson; }, get measures() { return measures; }, get selAtom() { return selAtom; }, hiddenChains, onPickAtom, addMeasure, busyHand, get UI() { return UI; }, parseCIF, parsePDB, buildModel, drawPanel, get pickables() { return pickables; } };
+if (new URLSearchParams(location.search).has('debug')) window.__bmdbg = { handsInfo: () => hands.map(h => ({ k: h.k, act: h.active, handed: h.handed, curl: h.curl && +h.curl.toFixed(4), idx: h.idx && +h.idx.toFixed(4), grip: !!h.gripping, busy: busyHand[h.k], vis: h.vis.visible })), airRot: () => airRot.size, S, LESSONS, loadPDB, loadSmall, startLesson, applyStep, exitLesson, rebuild, refreshOverlay, renderer, get mol() { return mol; }, get lesson() { return lesson; }, get measures() { return measures; }, get selAtom() { return selAtom; }, hiddenChains, onPickAtom, addMeasure, busyHand, get UI() { return UI; }, parseCIF, parsePDB, buildModel, drawPanel, get pickables() { return pickables; } };
 window.__biomol = { group: () => ({ role: G.role, room: G.room, status: G.status, students: G.students.size, follow: G.follow }), guide: () => ({ on: guide.on, i: guide.i }), mol: () => ({ q: molRoot.quaternion.toArray().map(v => +v.toFixed(3)), p: molRoot.position.toArray().map(v => +v.toFixed(3)), z: +S.userZoom.toFixed(3), grabs: grabs.length, pts: grabs.map(c => [c.userData.k, !!(c.userData.src && c.userData.src.hand), !!handOf(c), grabPoint(c, new THREE.Vector3()).toArray().map(v => +v.toFixed(3))]), v0: two.v0.toArray().map(v => +v.toFixed(3)) }), pointer: () => [G.pointer, markGroup.visible, G.lastPose] };
 // start with something to look at
 loadPDB('1HVR');
