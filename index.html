@@ -57,7 +57,7 @@ const TXT = {
     grpEnd:'Încheie sesiunea', grpRoom:'Introdu codul primit de la profesor', join:'Intră', grpSession:'Sesiunea {c}',
     grpTeacherOn:'Profesorul este conectat', grpTeacherOff:'Se așteaptă profesorul…', grpFollow:'Urmăresc profesorul', grpLeave:'Ieși din sesiune',
     grpFollowInfo:'Când urmărești profesorul, molecula ta se schimbă odată cu a lui. Oprește urmărirea ca să explorezi singur.', teacher:'Profesor', grpBadCode:'Cod invalid',
-    guideBtn:'Ghid de utilizare', domLbl:'Laser din mâna:', dRight:'Dreaptă', dLeft:'Stângă', diag:'Intrări', dCtrl:'controller', dHeld:'în mână', dIdle:'pe masă', dHand:'mână', dHidden:'ascunsă', handsLbl:'Mâini în AR:', hOff:'Ascunse', hTips:'Vârfuri degete', hSkel:'Schelet', guideDesk:'Ghidul pornește în AR, pe căști.', guideTitle:'Ghid', skipGuide:'Sari peste ghid', skipStep:'Sari pasul', close:'Închide', bravo:'✓ Bravo!',
+    guideBtn:'Ghid de utilizare', hDis:'Oprite', reenter:'Ieși din AR și intră din nou ca să se aplice', modeCtrl:'Mod: controller', modeHands:'Mod: mâini', domLbl:'Laser din mâna:', dRight:'Dreaptă', dLeft:'Stângă', diag:'Intrări', dCtrl:'controller', dHeld:'în mână', dIdle:'pe masă', dHand:'mână', dHidden:'ascunsă', handsLbl:'Mâini în AR:', hOff:'Fără puncte', hTips:'Vârfuri', hSkel:'Schelet', guideDesk:'Ghidul pornește în AR, pe căști.', guideTitle:'Ghid', skipGuide:'Sari peste ghid', skipStep:'Sari pasul', close:'Închide', bravo:'✓ Bravo!',
   },
   en: {
     tabMol:'Molecules', tabView:'Display', tabTools:'Tools', tabLearn:'Lessons',
@@ -85,7 +85,7 @@ const TXT = {
     grpEnd:'End session', grpRoom:'Enter the code from your teacher', join:'Join', grpSession:'Session {c}',
     grpTeacherOn:'Teacher is connected', grpTeacherOff:'Waiting for the teacher…', grpFollow:'Follow the teacher', grpLeave:'Leave session',
     grpFollowInfo:'While following, your molecule changes with the teacher’s. Turn following off to explore on your own.', teacher:'Teacher', grpBadCode:'Invalid code',
-    guideBtn:'User guide', domLbl:'Laser from hand:', dRight:'Right', dLeft:'Left', diag:'Inputs', dCtrl:'controller', dHeld:'held', dIdle:'idle', dHand:'hand', dHidden:'hidden', handsLbl:'Hands in AR:', hOff:'Hidden', hTips:'Fingertips', hSkel:'Skeleton', guideDesk:'The guide runs in AR, on the headset.', guideTitle:'Guide', skipGuide:'Skip guide', skipStep:'Skip step', close:'Close', bravo:'✓ Well done!',
+    guideBtn:'User guide', hDis:'Off', reenter:'Exit AR and enter again to apply', modeCtrl:'Mode: controller', modeHands:'Mode: hands', domLbl:'Laser from hand:', dRight:'Right', dLeft:'Left', diag:'Inputs', dCtrl:'controller', dHeld:'held', dIdle:'idle', dHand:'hand', dHidden:'hidden', handsLbl:'Hands in AR:', hOff:'No dots', hTips:'Tips', hSkel:'Skeleton', guideDesk:'The guide runs in AR, on the headset.', guideTitle:'Guide', skipGuide:'Skip guide', skipStep:'Skip step', close:'Close', bravo:'✓ Well done!',
   }
 };
 const t = (k, o) => { let s = (TXT[LANG][k] ?? k); if (o) for (const q in o) s = s.replace('{' + q + '}', o[q]); return s; };
@@ -916,8 +916,8 @@ function drawToolsTab(y) {
   button('guide', 40 + hw + 16, y, hw, 66, '🧭 ' + t('guideBtn'), () => { if (renderer.xr.isPresenting) startGuide(); else setMsg(() => t('guideDesk')); }, { fs: 27 });
   y += 82;
   g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = FONT('600', 26); g.fillStyle = C.dim; g.fillText(t('handsLbl'), 46, y + 31);
-  const bw3 = (PW - 80 - 230 - 2 * 10) / 3;
-  [['off', t('hOff')], ['tips', t('hTips')], ['skeleton', t('hSkel')]].forEach(([id, lb], k) => button('h_' + id, 270 + k * (bw3 + 10), y, bw3, 62, lb, () => { S.hands = id; try { localStorage.setItem('biomol-hands', id); } catch (e) {} drawPanel(); }, { on: S.hands === id, fs: 26 }));
+  const bw3 = (PW - 80 - 230 - 3 * 8) / 4;
+  [['tips', t('hTips')], ['skeleton', t('hSkel')], ['off', t('hOff')], ['disabled', t('hDis')]].forEach(([id, lb], k) => button('h_' + id, 270 + k * (bw3 + 8), y, bw3, 62, lb, () => { const was = S.hands; S.hands = id; try { localStorage.setItem('biomol-hands', id); } catch (e) {} if (renderer.xr.isPresenting && (was === 'disabled') !== (id === 'disabled')) setMsg(() => t('reenter')); drawPanel(); }, { on: S.hands === id, fs: 22 }));
   y += 76;
   g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = FONT('600', 26); g.fillStyle = C.dim; g.fillText(t('domLbl'), 46, y + 31);
   const bw2 = (PW - 80 - 230 - 10) / 2;
@@ -1025,10 +1025,10 @@ function updateDom() {
 xrBtn.addEventListener('click', async () => {
   if (!xrMode) return;
   try {
-    const session = await navigator.xr.requestSession(xrMode, { optionalFeatures: ['hand-tracking', 'local-floor'] });
+    const session = await navigator.xr.requestSession(xrMode, { optionalFeatures: S.hands === 'disabled' ? ['local-floor'] : ['hand-tracking', 'local-floor'] });
     camera.clearViewOffset(); controls.enabled = false;
     await renderer.xr.setSession(session);
-    pc.style.display = 'none'; xrBtn.style.display = 'none'; for (const id of ['hint','about']) document.getElementById(id).style.display = 'none'; panelMesh.visible = true; placePending = 3; drawHandle(false); drawPanel(); try { renderer.xr.setFoveation(0.5); } catch (e) {}
+    pc.style.display = 'none'; xrBtn.style.display = 'none'; for (const id of ['hint','about']) document.getElementById(id).style.display = 'none'; panelMesh.visible = true; placePending = 3; drawHandle(false); drawPanel(); noteCtrlActive(); try { renderer.xr.setFoveation(0.5); } catch (e) {}
     let seen = false; try { seen = localStorage.getItem('biomol-guide-done') === '1'; } catch (e) {} if (!seen) setTimeout(startGuide, 900);
     session.addEventListener('end', () => { controls.enabled = true; pc.style.display = ''; xrBtn.style.display = ''; for (const id of ['hint','about']) document.getElementById(id).style.display = ''; panelMesh.visible = false; grabs.length = 0; panelDrag = null; hoverQuad.visible = false; for (const h of hands) h.vis.visible = false; guide.on = false; guideMesh.visible = false; resetView(); drawPanel(); });
   } catch (e) { setMsg('WebXR: ' + (e.message || e), true); }
@@ -1054,9 +1054,9 @@ for (let k = 0; k < 4; k++) {
   const dot = new THREE.Mesh(new THREE.SphereGeometry(0.006, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff })); dot.visible = false; scene.add(dot); c.userData.dot = dot;
   c.addEventListener('connected', e => { c.userData.src = e.data; line.visible = !!e.data.targetRayMode && e.data.targetRayMode !== 'screen'; });
   c.addEventListener('disconnected', () => { c.userData.src = null; release(c); dot.visible = false; line.visible = false; c.userData.fo = null; c.userData.hoverAtom = null; });
-  c.addEventListener('selectstart', () => onSelect(c));
+  c.addEventListener('selectstart', () => { if (c.userData.src && !c.userData.src.hand) { noteCtrlActive(); if (inputMode !== 'controller') updateBusyHands(); } onSelect(c); });
   c.addEventListener('selectend', () => { release(c); endPanelDrag(c); airRot.delete(c); });
-  c.addEventListener('squeezestart', () => { if (ignoredHand(c) || !rayHand(c)) return; setRayPast(c); const h = panelOrHandleHit(); if (h) startPanelDrag(c, h); else startGrab(c); });
+  c.addEventListener('squeezestart', () => { if (c.userData.src && !c.userData.src.hand) { noteCtrlActive(); if (inputMode !== 'controller') updateBusyHands(); } if (ignoredHand(c) || !rayHand(c)) return; setRayPast(c); const h = panelOrHandleHit(); if (h) startPanelDrag(c, h); else startGrab(c); });
   c.addEventListener('squeezeend', () => { release(c); endPanelDrag(c); });
   scene.add(c); ctrls.push(c);
 }
@@ -1079,7 +1079,7 @@ function setRay(c) {
   tmpM.identity().extractRotation(c.matrixWorld); raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld); raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tmpM);
 }
 // pulling the trigger nudges the controller: use where the ray pointed ~80 ms before the press
-const PRESS_LAG = 80, HIST_N = 40;
+const PRESS_LAG = 50, HIST_N = 40;
 function histAt(u, ms) { const tt = performance.now() - ms; let best = null; for (const e of u.hist) if (e.t <= tt && (!best || e.t > best.t)) best = e; if (!best) for (const e of u.hist) if (e.t > -1e9 && (!best || e.t < best.t)) best = e; return best; }
 function setRayPast(c, ms = PRESS_LAG) {
   const u = c.userData; const smp = u.hist ? histAt(u, ms) : null; if (!smp) return setRay(c);
@@ -1109,7 +1109,10 @@ function airPoint(c, out) {
   const u = c.userData; const o = u.o || _arD.setFromMatrixPosition(c.matrixWorld); molRoot.getWorldPosition(out); const dist = THREE.MathUtils.clamp(out.distanceTo(o), 0.3, 2);
   setRay(c); return out.copy(raycaster.ray.origin).addScaledVector(raycaster.ray.direction, dist);
 }
-function startAirRotate(c) { if (!mol) return; const st = { p: airPoint(c, new THREE.Vector3()), f: null }; st.f = st.p.clone(); airRot.set(c, st); tick(c); }
+function startAirRotate(c) { if (!mol) return; molRoot.getWorldPosition(_gs.center);
+  if (c.userData.src && c.userData.src.hand && handOf(c) && !rayHand(c)) { if (pinchPoint(c, _arP).distanceTo(_gs.center) > grabRadius() * 2.2) return; }
+  else { setRayPast(c); _arD.subVectors(_gs.center, raycaster.ray.origin); const dist = _arD.length(); if (dist < 1e-3) return;
+    const isH = !!(c.userData.src && c.userData.src.hand); const ang = raycaster.ray.direction.angleTo(_arD), allow = Math.asin(Math.min(1, grabRadius() / dist)) + (isH ? 0.45 : 0.25); if (ang > allow) return; } const st = { p: airPoint(c, new THREE.Vector3()), f: null }; st.f = st.p.clone(); airRot.set(c, st); tick(c); }
 function updateAirRotate() {
   if (!airRot.size || !mol) return; const cam = renderer.xr.getCamera(); _camR.set(1, 0, 0).applyQuaternion(cam.getWorldQuaternion(_q)); _camR.y = 0; _camR.normalize();
   for (const [c, st] of airRot) {
@@ -1159,7 +1162,7 @@ function onSelect(c) {
   const gh = guideHit(); if (gh) { guidePress(gh.uv.x * GW, (1 - gh.uv.y) * GH); buzz(c); return; }
   const hh = handleHit(); if (hh) { startPanelDrag(c, hh); return; }
   const ph = panelHit();
-  if (ph) { const x = ph.uv.x * PW, y = (1 - ph.uv.y) * PH; const b = buttonAt(x, y, XR_TOL); if (b) { b.act(); buzz(c); } else if (y < 190) startPanelDrag(c, ph); return; }
+  if (ph) { const x = ph.uv.x * PW, y = (1 - ph.uv.y) * PH; const b = buttonAt(x, y, XR_TOL); if (b) { b.act(); buzz(c); } else if (y < 160) startPanelDrag(c, ph); return; }
   if (!mol) return;
   if (S.tool === 'grab') { if (molSphereHit()) { startGrab(c); buzz(c); } else startAirRotate(c); return; }
   let i = pastHover(c); if (i === null) i = hoverPick(); if (i === null) i = pickWithRay();
@@ -1172,7 +1175,7 @@ function controllerPresent() { const ses = renderer.xr.getSession(); if (!ses) r
 const busyHand = [false, false, false, false]; let ctrlHeld = false;
 // controllers on headsets without hand tracking: never hide their ray (no way to tell if held)
 function ctrlPresentRecently(c) { return hands.some(h => h.active); }
-function ignoredHand(c) { return !!(c.userData.src && c.userData.src.hand && busyHand[c.userData.k]); }
+function ignoredHand(c) { return !!(c.userData.src && c.userData.src.hand && (busyHand[c.userData.k] || S.hands === 'disabled')); }
 // only the dominant hand gets a laser; the other hand works by touch (poke) and direct pinch-grab
 function rayHand(c) { const src = c.userData.src; if (!src || !src.hand) return true; return src.handedness === 'none' || !src.handedness || src.handedness === S.dom; }
 const _palm = new THREE.Vector3(), _cp = new THREE.Vector3();
@@ -1182,44 +1185,41 @@ const _cq = new THREE.Quaternion();
 // A controller that is held always moves a little (hand tremor) or has buttons/touchpad in use;
 // one lying on the table is perfectly still. For a held controller we hide the hand holding it:
 // the hand with the same handedness, or else the hand whose palm is closest to it.
-const CURL_F = ['middle-finger', 'ring-finger', 'pinky-finger'];
-// average distance knuckle -> fingertip for middle/ring/pinky: ~8 cm open, ~3-4 cm wrapped around a handle
-function handCurl(J) { let sum = 0, n = 0; for (const f of CURL_F) { const tip = J[f + '-tip'], kn = J[f + '-phalanx-proximal']; if (!tip || !kn || !tip.visible) continue; tip.getWorldPosition(_pa); kn.getWorldPosition(_pb); sum += _pa.distanceTo(_pb); n++; } return n ? sum / n : 1; }
 // Which hand holds the controller?  1) a hand whose fingers are wrapped around a handle (works even if the
 // headset reports nothing useful about the controller), 2) the hand on the controller's side, 3) the palm next to it.
 // The other hand stays fully active (dots, poke, pinch).
+// Automatic input mode, like on Quest: using the controller = "controller mode" (hands fully ignored:
+// no dots, no rays, no accidental pinches from the hand holding it). Controller left alone for 30 s =
+// "hands mode". Touching the controller switches back instantly.
+let inputMode = 'controller', ctrlActiveAt = -1e9;
+const CTRL_IDLE_MS = 30000;
+function noteCtrlActive() { ctrlActiveAt = performance.now(); }
 function updateBusyHands() {
-  busyHand.fill(false); ctrlHeld = false;
-  for (const h of hands) {
-    if (!h.active) { h.gripping = false; continue; } const J = h.hand.joints; if (!J || !J['wrist'] || !J['wrist'].visible) continue;
-    h.curl = handCurl(J);
-    // holding a controller: middle/ring/pinky wrapped AND index bent on the trigger AND not pinching
-    // (pointing = index straight -> not a grip; pinch = thumb on index -> not a grip)
-    let idx = 1, pin = 1; if (J['index-finger-tip'] && J['index-finger-phalanx-proximal'] && J['thumb-tip']) { J['index-finger-tip'].getWorldPosition(_pa); J['index-finger-phalanx-proximal'].getWorldPosition(_pb); idx = _pa.distanceTo(_pb); J['thumb-tip'].getWorldPosition(_pb); pin = _pa.distanceTo(_pb); }
-    h.idx = idx; const gripNow = h.curl < 0.069 && idx < 0.068 && pin > 0.025, gripOff = h.curl > 0.076 || idx > 0.075 || pin < 0.018;
-    if (h.gripping) { if (gripOff) h.gripping = false; } else if (gripNow) h.gripping = true;
-  }
-  if (!ctrlPresent) return;
-  const now = performance.now();
+  const now = performance.now(); let anyCtrl = false;
   for (const c of ctrls) {
-    const src = c.userData.src; if (!src || src.hand) continue; const u = c.userData;
+    const src = c.userData.src; if (!src || src.hand || src.targetRayMode !== 'tracked-pointer') continue; anyCtrl = true; const u = c.userData;
     _cp.setFromMatrixPosition(c.matrixWorld); _cq.setFromRotationMatrix(c.matrixWorld);
-    if (!u.refPos) { u.refPos = _cp.clone(); u.refQ = _cq.clone(); u.lastMove = now; }
-    if (u.refPos.distanceToSquared(_cp) > 0.001 * 0.001 || u.refQ.angleTo(_cq) > 0.005) { u.refPos.copy(_cp); u.refQ.copy(_cq); u.lastMove = now; }
+    if (!u.refPos) { u.refPos = _cp.clone(); u.refQ = _cq.clone(); ctrlActiveAt = now; }
+    // real movement only (a controller lying on the table jitters by millimetres, not centimetres)
+    if (u.refPos.distanceTo(_cp) > 0.015 || u.refQ.angleTo(_cq) > 0.14) { u.refPos.copy(_cp); u.refQ.copy(_cq); ctrlActiveAt = now; }
     const gp = src.gamepad;
-    if (gp) { for (const b of gp.buttons) if (b.pressed || b.touched) { u.lastMove = now; break; } if (gp.axes) for (const a of gp.axes) if (Math.abs(a) > 0.1) { u.lastMove = now; break; } }
-    let holder = null, hd = 0.3;
-    for (const h of hands) { // gripping hand closest to the controller
-      if (!h.active || !h.gripping) continue; const J = h.hand.joints; const pj = J['middle-finger-metacarpal'] || J['wrist']; pj.getWorldPosition(_palm);
-      const d = _palm.distanceTo(_cp); if (d < hd) { hd = d; holder = h; }
-    }
-    if (!holder) { const g = hands.filter(h => h.active && h.gripping); if (g.length === 1) holder = g[0]; }
-    if (!holder && (src.handedness === 'left' || src.handedness === 'right') && now - u.lastMove < 10000) holder = hands.find(h => h.active && h.handed === src.handedness) || null;
-    if (!holder && now - u.lastMove < 10000) { let bd = 0.16; for (const h of hands) { if (!h.active) continue; const J = h.hand.joints; const pj = J && (J['middle-finger-metacarpal'] || J['wrist']); if (!pj || !pj.visible) continue; pj.getWorldPosition(_palm); const d = _palm.distanceTo(_cp); if (d < bd) { bd = d; holder = h; } } }
-    if (holder) { busyHand[holder.k] = true; u.lastMove = now; }
-    u.held = !!holder || now - u.lastMove < 10000; u.holder = holder;
-    if (u.held) ctrlHeld = true;
+    if (gp) { for (const b of gp.buttons) if (b.pressed || b.touched) { ctrlActiveAt = now; break; } if (gp.axes) for (const a of gp.axes) if (Math.abs(a) > 0.15) { ctrlActiveAt = now; break; } }
   }
+  const handsAvail = hands.some(h => h.active);
+  const mode = !anyCtrl ? 'hands' : !handsAvail ? 'controller' : (now - ctrlActiveAt < CTRL_IDLE_MS ? 'controller' : 'hands');
+  if (mode !== inputMode) setInputMode(mode);
+  const ctl = inputMode === 'controller'; ctrlHeld = ctl && anyCtrl;
+  for (const h of hands) busyHand[h.k] = ctl && anyCtrl && h.active;
+  for (const c of ctrls) c.userData.held = ctl;
+}
+function setInputMode(mode) {
+  inputMode = mode;
+  // drop anything the other input type was doing
+  for (const c of [...grabs]) if (!!(c.userData.src && c.userData.src.hand) === (mode === 'controller')) release(c);
+  for (const c of [...airRot.keys()]) if (!!(c.userData.src && c.userData.src.hand) === (mode === 'controller')) airRot.delete(c);
+  if (panelDrag && !!(panelDrag.c.userData.src && panelDrag.c.userData.src.hand) === (mode === 'controller')) endPanelDrag(panelDrag.c);
+  hoverQuad.visible = false; hoverOwner = null;
+  if (renderer.xr.isPresenting) setMsg(() => t(mode === 'controller' ? 'modeCtrl' : 'modeHands'));
 }
 const _pa = new THREE.Vector3(), _pb = new THREE.Vector3(), _q = new THREE.Quaternion(), _one = new THREE.Vector3(1, 1, 1), _mc = new THREE.Vector3();
 function handOf(c) { const h = hands[c.userData.k]; if (!h || !h.active) return null; const J = h.hand.joints; if (!J || !J['index-finger-tip'] || !J['thumb-tip'] || !J['wrist'] || !J['index-finger-tip'].visible) return null; return J; }
@@ -1265,7 +1265,7 @@ for (let k = 0; k < 4; k++) {
 const jp = new THREE.Vector3(), cJ = new THREE.Color(), tipLocal = new THREE.Vector3(), tipW = new THREE.Vector3(), thumbW = new THREE.Vector3();
 function updateHands() {
   for (const h of hands) {
-    if (busyHand[h.k]) { h.pinch = 0; h.vis.visible = false; h.poked = h.pokedG = false; if (grabs.includes(h.ctrl)) release(h.ctrl); continue; }
+    if (busyHand[h.k]) { h.pinch = 0; h.vis.visible = false; h.poked = h.pokedG = false; if (h.ctrl && h.ctrl.userData.src && h.ctrl.userData.src.hand && grabs.includes(h.ctrl)) release(h.ctrl); continue; }
     const J = h.hand.joints; if (!h.active || !J || !J['wrist'] || !J['index-finger-tip'] || !J['index-finger-tip'].visible) { h.vis.visible = false; h.pinch = 0; continue; }
     h.vis.visible = S.hands !== 'off';
     J['index-finger-tip'].getWorldPosition(tipW); J['thumb-tip'].getWorldPosition(thumbW);
@@ -1569,11 +1569,11 @@ function updateDiag(xr) {
   const ses = renderer.xr.getSession(); if (!ses) return; const parts = [];
   for (const src of ses.inputSources) {
     const side = src.handedness === 'left' ? 'L' : src.handedness === 'right' ? 'R' : '?';
-    if (src.hand) { const h = hands.find(q => q.active && q.handed === src.handedness); parts.push(`${t('dHand')} ${side} ${h && h.curl !== undefined ? (h.curl * 100).toFixed(1) + 'cm' : ''}${h && h.gripping ? '✊' : ''}` + (h && busyHand[h.k] ? ` (${t('dHidden')})` : '')); }
-    else if (src.targetRayMode === 'tracked-pointer') { const c = ctrls.find(q => q.userData.src === src); parts.push(`${t('dCtrl')} ${side}${src.gamepad ? '' : ' (no gamepad)'} (${c && c.userData.held ? t('dHeld') : t('dIdle')})`); }
+    if (src.hand) { const h = hands.find(q => q.active && q.handed === src.handedness); parts.push(`${t('dHand')} ${side}` + (h && busyHand[h.k] ? ` (${t('dHidden')})` : '')); }
+    else if (src.targetRayMode === 'tracked-pointer') { const c = ctrls.find(q => q.userData.src === src); parts.push(`${t('dCtrl')} ${side}${src.gamepad ? '' : ' (no gamepad)'}`); }
     else parts.push(src.targetRayMode);
   }
-  const txt = parts.join(' · '); if (txt !== diagText) { diagText = txt; if (UI.tab === 'tools') drawPanel(); }
+  const txt = (inputMode === 'controller' ? t('modeCtrl') : t('modeHands')) + ' · ' + parts.join(' · '); if (txt !== diagText) { diagText = txt; if (UI.tab === 'tools') drawPanel(); }
 }
 let frameNo = 0, xrHoverAtom = null, molVersion = 0; const _lastMolM = new THREE.Matrix4();
 // touchpad: dead zone + quadratic response = fine control for small movements, fast for big ones
@@ -1600,7 +1600,7 @@ renderer.setAnimationLoop(() => {
         const src = c.userData.src, active = grabs.includes(c) || airRot.has(c) || (panelDrag && panelDrag.c === c);
         let rayOn;
         if (src.hand) { const hh = hands[c.userData.k]; rayOn = active || (hh && hh.pinch > 0.35); }
-        else rayOn = active || !!c.userData.held || !ctrlPresentRecently(c);
+        else rayOn = active || inputMode === 'controller';
         if (!rayOn) { L.visible = false; c.userData.dot.visible = false; c.userData.hoverAtom = null; c.userData.wasOnMol = false; if (hoverOwner === c) { hoverQuad.visible = false; hoverOwner = null; } continue; }
         L.visible = src.targetRayMode !== 'screen';
       }
@@ -1666,7 +1666,7 @@ renderer.setAnimationLoop(() => {
 });
 
 updateDom(); drawPanel(); resetView();
-if (new URLSearchParams(location.search).has('debug')) window.__bmdbg = { handsInfo: () => hands.map(h => ({ k: h.k, act: h.active, handed: h.handed, curl: h.curl && +h.curl.toFixed(4), idx: h.idx && +h.idx.toFixed(4), grip: !!h.gripping, busy: busyHand[h.k], vis: h.vis.visible })), airRot: () => airRot.size, S, LESSONS, loadPDB, loadSmall, startLesson, applyStep, exitLesson, rebuild, refreshOverlay, renderer, get mol() { return mol; }, get lesson() { return lesson; }, get measures() { return measures; }, get selAtom() { return selAtom; }, hiddenChains, onPickAtom, addMeasure, busyHand, get UI() { return UI; }, parseCIF, parsePDB, buildModel, drawPanel, get pickables() { return pickables; } };
+if (new URLSearchParams(location.search).has('debug')) window.__bmdbg = { handsInfo: () => hands.map(h => ({ k: h.k, act: h.active, handed: h.handed, busy: busyHand[h.k], vis: h.vis.visible })), mode: () => inputMode, grabsInfo: () => grabs.map(c => !!(c.userData.src && c.userData.src.hand)), panelDragging: () => !!panelDrag, ctrlIdle: () => { ctrlActiveAt = -1e9; }, airRot: () => airRot.size, S, LESSONS, loadPDB, loadSmall, startLesson, applyStep, exitLesson, rebuild, refreshOverlay, renderer, get mol() { return mol; }, get lesson() { return lesson; }, get measures() { return measures; }, get selAtom() { return selAtom; }, hiddenChains, onPickAtom, addMeasure, busyHand, get UI() { return UI; }, parseCIF, parsePDB, buildModel, drawPanel, get pickables() { return pickables; } };
 window.__biomol = { group: () => ({ role: G.role, room: G.room, status: G.status, students: G.students.size, follow: G.follow }), guide: () => ({ on: guide.on, i: guide.i }), mol: () => ({ q: molRoot.quaternion.toArray().map(v => +v.toFixed(3)), p: molRoot.position.toArray().map(v => +v.toFixed(3)), z: +S.userZoom.toFixed(3), grabs: grabs.length, pts: grabs.map(c => [c.userData.k, !!(c.userData.src && c.userData.src.hand), !!handOf(c), grabPoint(c, new THREE.Vector3()).toArray().map(v => +v.toFixed(3))]), v0: two.v0.toArray().map(v => +v.toFixed(3)) }), pointer: () => [G.pointer, markGroup.visible, G.lastPose] };
 // start with something to look at
 loadPDB('1HVR');
