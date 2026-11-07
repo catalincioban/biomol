@@ -57,7 +57,7 @@ const TXT = {
     grpEnd:'Încheie sesiunea', grpRoom:'Introdu codul primit de la profesor', join:'Intră', grpSession:'Sesiunea {c}',
     grpTeacherOn:'Profesorul este conectat', grpTeacherOff:'Se așteaptă profesorul…', grpFollow:'Urmăresc profesorul', grpLeave:'Ieși din sesiune',
     grpFollowInfo:'Când urmărești profesorul, molecula ta se schimbă odată cu a lui. Oprește urmărirea ca să explorezi singur.', teacher:'Profesor', grpBadCode:'Cod invalid',
-    guideBtn:'Ghid de utilizare', guideDesk:'Ghidul pornește în AR, pe căști.', guideTitle:'Ghid', skipGuide:'Sari peste ghid', skipStep:'Sari pasul', close:'Închide', bravo:'✓ Bravo!',
+    guideBtn:'Ghid de utilizare', handsLbl:'Mâini în AR:', hOff:'Ascunse', hTips:'Vârfuri degete', hSkel:'Schelet', guideDesk:'Ghidul pornește în AR, pe căști.', guideTitle:'Ghid', skipGuide:'Sari peste ghid', skipStep:'Sari pasul', close:'Închide', bravo:'✓ Bravo!',
   },
   en: {
     tabMol:'Molecules', tabView:'Display', tabTools:'Tools', tabLearn:'Lessons',
@@ -85,7 +85,7 @@ const TXT = {
     grpEnd:'End session', grpRoom:'Enter the code from your teacher', join:'Join', grpSession:'Session {c}',
     grpTeacherOn:'Teacher is connected', grpTeacherOff:'Waiting for the teacher…', grpFollow:'Follow the teacher', grpLeave:'Leave session',
     grpFollowInfo:'While following, your molecule changes with the teacher’s. Turn following off to explore on your own.', teacher:'Teacher', grpBadCode:'Invalid code',
-    guideBtn:'User guide', guideDesk:'The guide runs in AR, on the headset.', guideTitle:'Guide', skipGuide:'Skip guide', skipStep:'Skip step', close:'Close', bravo:'✓ Well done!',
+    guideBtn:'User guide', handsLbl:'Hands in AR:', hOff:'Hidden', hTips:'Fingertips', hSkel:'Skeleton', guideDesk:'The guide runs in AR, on the headset.', guideTitle:'Guide', skipGuide:'Skip guide', skipStep:'Skip step', close:'Close', bravo:'✓ Well done!',
   }
 };
 const t = (k, o) => { let s = (TXT[LANG][k] ?? k); if (o) for (const q in o) s = s.replace('{' + q + '}', o[q]); return s; };
@@ -359,7 +359,8 @@ const reps = new THREE.Group(); inner.add(reps);
 const overlay = new THREE.Group(); inner.add(overlay);       // labels, measurements, selection
 
 /* ============================== state ============================== */
-const S = { mode:'cartoon', color:'chain', water:false, hyd:false, lig:true, side:false, tool:'grab', spin:false, userZoom:1 };
+let HANDS0 = 'tips'; try { HANDS0 = localStorage.getItem('biomol-hands') || 'tips'; } catch (e) {}
+const S = { hands: HANDS0, mode:'cartoon', color:'chain', water:false, hyd:false, lig:true, side:false, tool:'grab', spin:false, userZoom:1 };
 let mol = null, molInfo = null;
 const hiddenChains = new Set();
 let lessonView = null;         // {chains, hl:Set(res), dim, labels}
@@ -483,30 +484,35 @@ function rebuild() {
 }
 let pickables = null;
 function buildPickables() {
+  molVersion++;
   const idx = [], rad = [], seen = new Set(), L = lessonView;
   for (const a of mol.atoms) if (a.style !== 'none') { idx.push(a.i); rad.push(Math.max(atomRadius(a), 0.4)); seen.add(a.i); }
   if (S.mode === 'cartoon') for (const r of mol.residues) {
     if (r.kind !== 'protein' && r.kind !== 'nucleic') continue; if (hiddenChains.has(r.chain) || (L && L.chains && !L.chains.includes(r.chain))) continue;
     const i = r.ca ?? r.p ?? r.c4; if (i !== undefined && !seen.has(i)) { idx.push(i); rad.push(1.4); }
   }
-  pickables = { idx: Int32Array.from(idx), rad: Float32Array.from(rad) };
+  const xyz = new Float32Array(idx.length * 3); idx.forEach((i, k) => { const a = mol.atoms[i]; xyz[k * 3] = a.x; xyz[k * 3 + 1] = a.y; xyz[k * 3 + 2] = a.z; });
+  pickables = { idx: Int32Array.from(idx), rad: Float32Array.from(rad), xyz };
 }
 const _inv = new THREE.Matrix4(), _lr = new THREE.Ray();
 // precise picking: front-most atom under the ray, otherwise the nearest atom within ~1.7° (snapping)
 function hoverPick() {
   if (!mol || !pickables || !pickables.idx.length) return null;
   inner.updateMatrixWorld(); _inv.copy(inner.matrixWorld).invert(); _lr.copy(raycaster.ray).applyMatrix4(_inv);
-  const o = _lr.origin, d = _lr.direction, A = mol.atoms, I = pickables.idx, Rr = pickables.rad;
-  let hit = null, hitT = Infinity, near = null, nearA = Infinity;
-  for (let k = 0; k < I.length; k++) {
-    const a = A[I[k]]; const vx = a.x - o.x, vy = a.y - o.y, vz = a.z - o.z; const t = vx * d.x + vy * d.y + vz * d.z; if (t <= 0) continue;
-    const p2 = vx * vx + vy * vy + vz * vz - t * t, r = Rr[k];
-    if (p2 < r * r) { if (t < hitT) { hitT = t; hit = I[k]; } }
-    else if (hit === null) { const ang = (Math.sqrt(p2) - r) / t; if (ang < nearA) { nearA = ang; near = I[k]; } }
-  }
-  return hit !== null ? hit : (nearA < 0.03 ? near : null);
+  return hoverScan(pickables.xyz, pickables.rad, pickables.idx, _lr.origin.x, _lr.origin.y, _lr.origin.z, _lr.direction.x, _lr.direction.y, _lr.direction.z);
 }
-function rebuildOverlay() { disposeGroup(overlay); labelSprites = []; if (!mol) return; buildLabels(); buildMeasures(); buildSelection(); }
+// tight loop over typed arrays: no object access, no garbage
+function hoverScan(X, Rr, I, ox, oy, oz, dx, dy, dz) {
+  let hit = -1, hitT = 1e30, near = -1, nearA = 1e30; const n = I.length;
+  for (let k = 0; k < n; k++) {
+    const b = k * 3; const vx = X[b] - ox, vy = X[b + 1] - oy, vz = X[b + 2] - oz; const t = vx * dx + vy * dy + vz * dz; if (t <= 0) continue;
+    const p2 = vx * vx + vy * vy + vz * vz - t * t, r = Rr[k];
+    if (p2 < r * r) { if (t < hitT) { hitT = t; hit = k; } }
+    else if (hit < 0) { const ang = (Math.sqrt(p2) - r) / t; if (ang < nearA) { nearA = ang; near = k; } }
+  }
+  if (hit >= 0) return I[hit]; return (near >= 0 && nearA < 0.03) ? I[near] : null;
+}
+function rebuildOverlay() { disposeGroup(overlay); labelSprites = []; LABEL_ARRS[0] = labelSprites; if (!mol) return; buildLabels(); buildMeasures(); buildSelection(); }
 function refreshOverlay() { rebuildOverlay(); drawPanel(); groupChanged(); }
 
 function buildCartoon() {
@@ -662,18 +668,18 @@ async function fetchStructure(code) {
 }
 async function loadPDB(code, name, keepLesson = false) {
   code = code.toUpperCase(); const tok = ++loadToken;
-  setMsg(`${t('loading')} ${code}…`);
+  setMsg(() => `${t('loading')} ${code}…`, false, true);
   try {
     const { txt, fmt } = await fetchStructure(code);
     if (tok !== loadToken) return false;
     const p = fmt === 'cif' ? parseCIF(txt) : parsePDB(txt);
     if (!p.atoms.length) throw new Error('no atoms');
-    if (p.atoms.length > 90000) { setMsg(t('tooBig') + ` (${p.atoms.length} ${t('atoms')})`, true); return false; }
+    if (p.atoms.length > 90000) { setMsg(() => t('tooBig') + ` (${p.atoms.length} ${t('atoms')})`, true); return false; }
     const m = buildModel(p, false);
     const lib = LIB.find(l => l.code === code);
     setMolecule(m, { code, name: lib ? lib.name : (name || titleCase(p.title) || code) }, keepLesson);
     return true;
-  } catch (e) { if (tok === loadToken) setMsg(t('loadErr') + code + ' (' + (e.message || e) + ')', true); return false; }
+  } catch (e) { if (tok === loadToken) { const why = (e.message || String(e)); setMsg(() => t('loadErr') + code + ' (' + why + ')', true); } return false; }
 }
 function titleCase(s) { s = (s || '').toLowerCase(); return s ? s[0].toUpperCase() + s.slice(1, 60) : ''; }
 function loadSmall(id) {
@@ -788,7 +794,9 @@ const UI = { tab: 'mol', keypad: false, code: '', hover: null, msg: '', err: fal
 let buttons = [];
 const C = { bg: 'rgba(6,12,24,0.90)', acc: '#2fd4ff', text: '#eaf7ff', dim: '#8fb3c9', btn: 'rgba(36,66,96,0.62)', hov: 'rgba(66,128,170,0.85)', edge: 'rgba(47,212,255,0.45)' };
 const FONT = (w, s) => `${w} ${s}px system-ui,"Segoe UI",Arial,sans-serif`;
-function setMsg(m, err = false) { UI.msg = m; UI.err = err; drawPanel(); }
+// messages can be functions so they re-translate on language change; non-loading messages clear themselves
+let msgId = 0;
+function setMsg(m, err = false, sticky = false) { UI.msg = m; UI.err = err; const id = ++msgId; if (m && !sticky) setTimeout(() => { if (id === msgId) { UI.msg = ''; drawPanel(); } }, err ? 9000 : 5000); drawPanel(); }
 function fitFont(text, maxW, size, weight) { let s = size; g.font = FONT(weight, s); while (s > 16 && g.measureText(text).width > maxW) { s -= 2; g.font = FONT(weight, s); } return s; }
 function button(id, x, y, w, h, label, act, o = {}) {
   const on = !!o.on, hov = UI.hover === id && !o.disabled;
@@ -825,7 +833,7 @@ function drawPanel() {
   const title = mol ? `${molInfo.code} · ${tr(molInfo.name)}` : t('noMol');
   fitFont(title, PW - 80, 32, '600'); g.fillStyle = C.text; g.fillText(title, 40, 136);
   let sub = '';
-  if (UI.msg) sub = UI.msg;
+  if (UI.msg) sub = typeof UI.msg === 'function' ? UI.msg() : UI.msg;
   else if (mol) sub = mol.small ? `${mol.atoms.length} ${t('atoms')}` : `${mol.atoms.filter(a => a.kind !== 'water').length} ${t('atoms')} · ${mol.residues.filter(r => r.kind === 'protein' || r.kind === 'nucleic').length} ${t('residues')} · ${mol.chains.length} ${t('chains')}`;
   fitFont(sub, PW - 80, 25, '500'); g.fillStyle = UI.err ? '#ff8a8a' : (UI.msg ? '#ffe14a' : C.dim); g.fillText(sub, 40, 174);
   // tabs
@@ -904,8 +912,12 @@ function drawToolsTab(y) {
   y += 2 * 88 + 10;
   const hw = (PW - 80 - 16) / 2;
   button('clr', 40, y, hw, 66, t('clearM'), () => { measures = []; picks = []; selAtom = null; refreshOverlay(); }, { fs: 27 });
-  button('guide', 40 + hw + 16, y, hw, 66, '🧭 ' + t('guideBtn'), () => { if (renderer.xr.isPresenting) startGuide(); else setMsg(t('guideDesk')); }, { fs: 27 });
-  y += 110;
+  button('guide', 40 + hw + 16, y, hw, 66, '🧭 ' + t('guideBtn'), () => { if (renderer.xr.isPresenting) startGuide(); else setMsg(() => t('guideDesk')); }, { fs: 27 });
+  y += 82;
+  g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = FONT('600', 26); g.fillStyle = C.dim; g.fillText(t('handsLbl'), 46, y + 31);
+  const bw3 = (PW - 80 - 230 - 2 * 10) / 3;
+  [['off', t('hOff')], ['tips', t('hTips')], ['skeleton', t('hSkel')]].forEach(([id, lb], k) => button('h_' + id, 270 + k * (bw3 + 10), y, bw3, 62, lb, () => { S.hands = id; try { localStorage.setItem('biomol-hands', id); } catch (e) {} drawPanel(); }, { on: S.hands === id, fs: 26 }));
+  y += 104;
   g.textAlign = 'left'; g.textBaseline = 'alphabetic';
   const lines = [];
   if (selAtom !== null && mol) lines.push(...atomDescription(selAtom).map(s => ['#eaf7ff', s]));
@@ -914,7 +926,7 @@ function drawToolsTab(y) {
   let yy = y;
   for (const [c, s] of lines) for (const l of wrap(s, PW - 100, FONT('500', 30))) { g.font = FONT('500', 30); g.fillStyle = c; g.fillText(l, 48, yy); yy += 40; }
   if (measures.length) { yy += 16; section(t('measures'), yy); yy += 46;
-    for (const m of measures.slice(-4)) { g.font = FONT('700', 30); g.fillStyle = '#ffe14a'; g.fillText(m.text, 48, yy); const s = fitFont(m.names, PW - 260, 24, '500'); g.fillStyle = C.dim; g.fillText(m.names, 210, yy); yy += 42; } }
+    for (const m of measures.slice(-3)) { g.font = FONT('700', 30); g.fillStyle = '#ffe14a'; g.fillText(m.text, 48, yy); const s = fitFont(m.names, PW - 260, 24, '500'); g.fillStyle = C.dim; g.fillText(m.names, 210, yy); yy += 42; } }
   const hy = PH - 250; for (const [k, l] of wrap(t('help'), PW - 100, FONT('500', 24)).entries()) { g.font = FONT('500', 24); g.fillStyle = C.dim; g.fillText(l, 48, hy + k * 32); }
 }
 function drawLearnTab(y) {
@@ -1046,28 +1058,28 @@ for (let k = 0; k < 4; k++) {
 const oeAlpha = (dt, cut) => 1 / (1 + 1 / (2 * Math.PI * cut) / dt);
 class OneEuro3 {
   constructor(minCut, beta, dCut = 1) { this.minCut = minCut; this.beta = beta; this.dCut = dCut; this.x = null; this.dx = new THREE.Vector3(); }
-  filter(v, dt) { dt = Math.max(dt, 1e-3); if (!this.x) { this.x = v.clone(); this.dx.set(0, 0, 0); return this.x; }
-    const d = v.clone().sub(this.x).divideScalar(dt); this.dx.lerp(d, oeAlpha(dt, this.dCut)); this.x.lerp(v, oeAlpha(dt, this.minCut + this.beta * this.dx.length())); return this.x; }
+  filter(v, dt) { dt = Math.max(dt, 1e-3); if (!this.x) { this.x = v.clone(); this.dx.set(0, 0, 0); this.t = new THREE.Vector3(); return this.x; }
+    const d = this.t.copy(v).sub(this.x).divideScalar(dt); this.dx.lerp(d, oeAlpha(dt, this.dCut)); this.x.lerp(v, oeAlpha(dt, this.minCut + this.beta * this.dx.length())); return this.x; }
 }
 const _ro = new THREE.Vector3(), _rd = new THREE.Vector3(), _rm = new THREE.Matrix4(), NEG_Z = new THREE.Vector3(0, 0, -1);
 function updateRayFilter(c, dt) {
-  const u = c.userData; if (!u.fo) { u.fo = new OneEuro3(1.4, 18); u.fd = new OneEuro3(1.2, 3.5); u.hist = []; u.hoverHist = []; }
+  const u = c.userData; if (!u.fo) { u.fo = new OneEuro3(1.4, 18); u.fd = new OneEuro3(1.2, 3.5); u.hist = Array.from({ length: HIST_N }, () => ({ t: -1e9, o: new THREE.Vector3(), d: new THREE.Vector3(), a: null })); u.hi = 0; }
   _rm.identity().extractRotation(c.matrixWorld); _ro.setFromMatrixPosition(c.matrixWorld); _rd.set(0, 0, -1).applyMatrix4(_rm);
   u.o = u.fo.filter(_ro, dt); u.d = u.fd.filter(_rd, dt).normalize();
-  const now = performance.now(); u.hist.push({ t: now, o: u.o.clone(), d: u.d.clone() }); while (u.hist.length > 2 && now - u.hist[0].t > 300) u.hist.shift();
+  const e = u.hist[u.hi]; e.t = performance.now(); e.o.copy(u.o); e.d.copy(u.d); e.a = null; u.cur = e; u.hi = (u.hi + 1) % HIST_N; // ring buffer, no garbage
 }
 function setRay(c) {
   const u = c.userData; if (u.o) { raycaster.ray.origin.copy(u.o); raycaster.ray.direction.copy(u.d); return; }
   tmpM.identity().extractRotation(c.matrixWorld); raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld); raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tmpM);
 }
 // pulling the trigger nudges the controller: use where the ray pointed ~80 ms before the press
-const PRESS_LAG = 80;
+const PRESS_LAG = 80, HIST_N = 40;
+function histAt(u, ms) { const tt = performance.now() - ms; let best = null; for (const e of u.hist) if (e.t <= tt && (!best || e.t > best.t)) best = e; if (!best) for (const e of u.hist) if (e.t > -1e9 && (!best || e.t < best.t)) best = e; return best; }
 function setRayPast(c, ms = PRESS_LAG) {
-  const u = c.userData; if (!u.hist || !u.hist.length) return setRay(c);
-  const tt = performance.now() - ms; let smp = u.hist[0]; for (const h of u.hist) { if (h.t <= tt) smp = h; else break; }
+  const u = c.userData; const smp = u.hist ? histAt(u, ms) : null; if (!smp) return setRay(c);
   raycaster.ray.origin.copy(smp.o); raycaster.ray.direction.copy(smp.d);
 }
-function pastHover(c, ms = PRESS_LAG) { const H = c.userData.hoverHist; if (!H || !H.length) return c.userData.hoverAtom ?? null; const tt = performance.now() - ms; let v = H[0].a; for (const h of H) { if (h.t <= tt) v = h.a; else break; } return v; }
+function pastHover(c, ms = PRESS_LAG) { const u = c.userData; const e = u.hist ? histAt(u, ms) : null; return e ? e.a : (u.hoverAtom ?? null); }
 function tick(c) { try { c.userData.src?.gamepad?.hapticActuators?.[0]?.pulse(0.12, 8); } catch (e) {} }
 function panelHit() { if (!panelMesh.visible) return null; const h = raycaster.intersectObject(panelMesh, false)[0]; return h || null; }
 function handleHit() { if (!panelMesh.visible) return null; return raycaster.intersectObject(handleMesh, false)[0] || null; }
@@ -1112,13 +1124,28 @@ function ignoredHand(c) { return !!(c.userData.src && c.userData.src.hand && bus
 const _palm = new THREE.Vector3(), _cp = new THREE.Vector3();
 // a hand counts as "holding the controller" only if its palm is right next to the controller;
 // the other hand stays free for gestures, and if the controller is put down both hands work.
+const _cq = new THREE.Quaternion();
+// A controller that is held always moves a little (hand tremor) or has buttons/touchpad in use;
+// one lying on the table is perfectly still. For a held controller we hide the hand holding it:
+// the hand with the same handedness, or else the hand whose palm is closest to it.
 function updateBusyHands() {
   busyHand.fill(false); if (!ctrlPresent) return;
-  const cps = [];
-  for (const c of ctrls) { const src = c.userData.src; if (!src || src.hand || !src.gamepad) continue; const g = c.userData.grip; (g && g.visible ? g : c).getWorldPosition(_cp); cps.push(_cp.clone()); }
-  for (const h of hands) {
-    if (!h.active) continue; const J = h.hand.joints; const pj = J && (J['middle-finger-metacarpal'] || J['wrist']); if (!pj || !pj.visible) continue;
-    pj.getWorldPosition(_palm); if (cps.some(p => p.distanceTo(_palm) < 0.13)) busyHand[h.k] = true;
+  const now = performance.now();
+  for (const c of ctrls) {
+    const src = c.userData.src; if (!src || src.hand || !src.gamepad) continue; const u = c.userData;
+    _cp.setFromMatrixPosition(c.matrixWorld); _cq.setFromRotationMatrix(c.matrixWorld);
+    if (!u.refPos) { u.refPos = _cp.clone(); u.refQ = _cq.clone(); u.lastMove = now; }
+    if (u.refPos.distanceToSquared(_cp) > 0.0025 * 0.0025 || u.refQ.angleTo(_cq) > 0.012) { u.refPos.copy(_cp); u.refQ.copy(_cq); u.lastMove = now; }
+    const gp = src.gamepad; for (const b of gp.buttons) if (b.pressed || b.touched) { u.lastMove = now; break; }
+    if (gp.axes) for (const a of gp.axes) if (Math.abs(a) > 0.1) { u.lastMove = now; break; }
+    if (now - u.lastMove > 3000) continue; // put down: both hands are free
+    let best = null, bd = 0.4;
+    for (const h of hands) {
+      if (!h.active) continue; const J = h.hand.joints; const pj = J && (J['middle-finger-metacarpal'] || J['wrist']); if (!pj || !pj.visible) continue;
+      if (src.handedness && src.handedness !== 'none' && h.handed === src.handedness) { best = h; break; }
+      pj.getWorldPosition(_palm); const d = _palm.distanceTo(_cp); if (d < bd) { bd = d; best = h; }
+    }
+    if (best) busyHand[best.k] = true;
   }
 }
 const _pa = new THREE.Vector3(), _pb = new THREE.Vector3(), _q = new THREE.Quaternion(), _one = new THREE.Vector3(1, 1, 1), _mc = new THREE.Vector3();
@@ -1157,8 +1184,8 @@ for (let k = 0; k < 4; k++) {
   const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(BONES.length * 6), 3));
   const bones = new THREE.LineSegments(bg, new THREE.LineBasicMaterial({ color: 0x2fd4ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })); bones.frustumCulled = false; vis.add(bones);
   const tipGlow = new THREE.Mesh(new THREE.SphereGeometry(0.012, 16, 12), new THREE.MeshBasicMaterial({ color: 0x2fd4ff, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })); vis.add(tipGlow);
-  const h = { k, hand, vis, jm, bones, tipGlow, active: false, poked: false, ctrl: null };
-  hand.addEventListener('connected', e => { h.active = !!e.data.hand; h.ctrl = renderer.xr.getController(k); });
+  const h = { k, hand, vis, jm, bones, tipGlow, active: false, poked: false, ctrl: null, P: JOINTS.map(() => new THREE.Vector3()), handed: 'none' };
+  hand.addEventListener('connected', e => { h.active = !!e.data.hand; h.handed = e.data.handedness || 'none'; h.ctrl = renderer.xr.getController(k); });
   hand.addEventListener('disconnected', () => { h.active = false; vis.visible = false; });
   hands.push(h);
 }
@@ -1167,19 +1194,22 @@ function updateHands() {
   for (const h of hands) {
     if (busyHand[h.k]) { h.vis.visible = false; h.poked = h.pokedG = false; if (grabs.includes(h.ctrl)) release(h.ctrl); continue; }
     const J = h.hand.joints; if (!h.active || !J || !J['wrist'] || !J['index-finger-tip'] || !J['index-finger-tip'].visible) { h.vis.visible = false; if (h.ctrl) h.ctrl.userData.line.visible = true; continue; }
-    h.vis.visible = true;
+    h.vis.visible = S.hands !== 'off';
     J['index-finger-tip'].getWorldPosition(tipW); J['thumb-tip'].getWorldPosition(thumbW);
     const pinch = THREE.MathUtils.clamp(1 - (tipW.distanceTo(thumbW) - 0.015) / 0.04, 0, 1);
-    const pos = h.bones.geometry.attributes.position.array; const P = [];
+    const pos = h.bones.geometry.attributes.position.array; const P = h.P; const skel = S.hands === 'skeleton';
+    h.bones.visible = skel;
     JOINTS.forEach((name, i) => {
-      const j = J[name]; if (j) j.getWorldPosition(jp); P.push(jp.clone());
-      const tip = name.endsWith('tip'); const r = THREE.MathUtils.clamp((j && j.jointRadius ? j.jointRadius : 0.008) * (tip ? 0.75 : 0.55), 0.003, name === 'wrist' ? 0.007 : 0.0055);
+      const j = J[name]; if (j) j.getWorldPosition(jp); P[i].copy(jp);
+      const tip = name.endsWith('tip'); const keyTip = name === 'index-finger-tip' || name === 'thumb-tip';
+      let r = THREE.MathUtils.clamp((j && j.jointRadius ? j.jointRadius : 0.008) * (tip ? 0.75 : 0.55), 0.003, name === 'wrist' ? 0.007 : 0.0055);
+      if (!skel) r = keyTip ? 0.0055 : 0;
       tmpM.makeScale(r, r, r).setPosition(jp); h.jm.setMatrixAt(i, tmpM);
       const glow = (name === 'index-finger-tip' || name === 'thumb-tip') ? pinch : 0;
       cJ.setRGB(0.18 + 0.82 * glow, 0.83 + 0.17 * glow, 1); h.jm.setColorAt(i, cJ);
     });
-    BONES.forEach(([a, b], i) => { pos.set([P[a].x, P[a].y, P[a].z, P[b].x, P[b].y, P[b].z], i * 6); });
-    h.jm.instanceMatrix.needsUpdate = true; if (h.jm.instanceColor) h.jm.instanceColor.needsUpdate = true; h.bones.geometry.attributes.position.needsUpdate = true;
+    if (skel) for (let i = 0; i < BONES.length; i++) { const A = P[BONES[i][0]], B = P[BONES[i][1]], o = i * 6; pos[o] = A.x; pos[o + 1] = A.y; pos[o + 2] = A.z; pos[o + 3] = B.x; pos[o + 4] = B.y; pos[o + 5] = B.z; }
+    h.jm.instanceMatrix.needsUpdate = true; if (h.jm.instanceColor) h.jm.instanceColor.needsUpdate = true; if (skel) h.bones.geometry.attributes.position.needsUpdate = true;
     // fingertip glow + direct touch on the menu
     h.tipGlow.position.copy(tipW); h.tipGlow.scale.setScalar(1 + pinch * 0.8);
     if (guideMesh.visible) {
@@ -1208,6 +1238,7 @@ const urlBroker = new URLSearchParams(location.search).get('broker');
 const G = { role: null, room: null, client: null, status: 'off', students: new Map(), follow: true, teacherSeen: 0, lastSig: '', lastPoseSig: '', lastPoseAt: 0, poseTimer: 0, lastState: null, lastPose: null, appliedLesson: '', pointer: null, id: Math.random().toString(36).slice(2, 10), uiSig: '' };
 let mqttMod = null, pubTimer = null, remoteTok = 0;
 const persistentLabels = [];
+let LABEL_ARRS = [[], persistentLabels];
 const markGroup = new THREE.Group(); inner.add(markGroup); markGroup.visible = false;
 { const ring = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.12, 8, 32), new THREE.MeshBasicMaterial({ color: 0xffa24a, transparent: true, opacity: 0.9, depthTest: false })); ring.renderOrder = 12; markGroup.add(ring); markGroup.userData.ring = ring;
   const glow = new THREE.Mesh(new THREE.SphereGeometry(1.0, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffa24a, transparent: true, opacity: 0.35, depthTest: false, blending: THREE.AdditiveBlending })); glow.renderOrder = 12; markGroup.add(glow); }
@@ -1223,11 +1254,19 @@ function showHover(i) {
   const a = mol.atoms[i]; hoverGroup.visible = true; hoverGroup.position.set(a.x, a.y, a.z);
   const r = (a.style === 'none' ? 1.2 : Math.max(atomRadius(a), 0.35) * 1.45 + 0.15); hoverRing.scale.setScalar(Math.max(r, 0.005 / scaler.scale.x));
   (renderer.xr.isPresenting ? renderer.xr.getCamera() : camera).getWorldPosition(_cw); hoverRing.lookAt(_cw);
-  if (hoverShown !== i) {
-    hoverShown = i;
-    if (hoverLabel) { hoverGroup.remove(hoverLabel); hoverLabel.material.map.dispose(); hoverLabel.material.dispose(); const k = persistentLabels.indexOf(hoverLabel); if (k >= 0) persistentLabels.splice(k, 1); }
-    hoverLabel = makeLabel(mol.small ? a.name : `${a.name} · ${resLabel(mol.residues[a.res])}`, '#9ff0ff'); labelSprites.pop(); hoverLabel.userData.lift = 1.1; hoverGroup.add(hoverLabel); persistentLabels.push(hoverLabel);
-  }
+  if (hoverShown !== i) { hoverShown = i; hoverLabelDirty = true; }
+  const now = performance.now();
+  if (hoverLabelDirty && now - hoverLabelAt > 120) { hoverLabelDirty = false; hoverLabelAt = now; drawHoverLabel(mol.small ? a.name : `${a.name} · ${resLabel(mol.residues[a.res])}`); }
+}
+let hoverLabelDirty = false, hoverLabelAt = 0;
+const HLW = 760, HLH = 92; const hlCv = document.createElement('canvas'); hlCv.width = HLW; hlCv.height = HLH; const hlCtx = hlCv.getContext('2d');
+const hlTex = new THREE.CanvasTexture(hlCv); hlTex.colorSpace = THREE.SRGBColorSpace;
+hoverLabel = new THREE.Sprite(new THREE.SpriteMaterial({ map: hlTex, depthTest: false, transparent: true })); hoverLabel.renderOrder = 14; hoverLabel.userData.aspect = HLW / HLH; hoverLabel.userData.lift = 1.1;
+hoverGroup.add(hoverLabel); persistentLabels.push(hoverLabel);
+function drawHoverLabel(text) {
+  const c = hlCtx; c.clearRect(0, 0, HLW, HLH); c.font = '600 44px system-ui,Segoe UI,Arial'; const w = Math.min(HLW - 8, c.measureText(text).width + 32);
+  c.fillStyle = 'rgba(5,12,22,0.78)'; c.beginPath(); c.roundRect((HLW - w) / 2, 4, w, HLH - 8, 14); c.fill(); c.strokeStyle = 'rgba(159,240,255,0.75)'; c.lineWidth = 3; c.stroke();
+  c.fillStyle = '#9ff0ff'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(text, HLW / 2, HLH / 2 + 2); hlTex.needsUpdate = true;
 }
 async function mqttConnect(url) {
   if (!mqttMod) mqttMod = await import('https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.esm.js');
@@ -1249,7 +1288,7 @@ async function createSession() {
 }
 async function joinSession(code) {
   const idx = +code[0]; const url = idx === 0 ? urlBroker : BROKERS[idx - 1];
-  if (!url || !/^\d{4}$/.test(code)) { setMsg(t('grpBadCode'), true); return; }
+  if (!url || !/^\d{4}$/.test(code)) { setMsg(() => t('grpBadCode'), true); return; }
   G.status = 'connecting'; G.role = 'student'; G.room = code; drawPanel();
   try { const c = await mqttConnect(url); setupClient(c, 'student', code); } catch (e) { G.status = 'error'; drawPanel(); }
 }
@@ -1450,7 +1489,7 @@ function updateGuide(dt) {
 /* ============================== loop ============================== */
 const clock = new THREE.Clock();
 const tmpScale = new THREE.Vector3(), prevMolPos = new THREE.Vector3(), _hp = new THREE.Vector3();
-let frameNo = 0, xrHoverAtom = null;
+let frameNo = 0, xrHoverAtom = null, molVersion = 0; const _lastMolM = new THREE.Matrix4();
 // touchpad: dead zone + quadratic response = fine control for small movements, fast for big ones
 const padCurve = (v) => { const a = Math.abs(v || 0); if (a < 0.18) return 0; const n = (a - 0.18) / 0.82; return Math.sign(v) * n * n; };
 renderer.setAnimationLoop(() => {
@@ -1462,6 +1501,7 @@ renderer.setAnimationLoop(() => {
   const zl = xr ? 1 + (zoomLesson - 1) * 0.55 : zoomLesson; const targetS = fitScale * zl * S.userZoom; const cs = scaler.scale.x; scaler.scale.setScalar(cs + (targetS - cs) * (1 - Math.pow(0.001, dt)));
   if (S.spin && !grabs.length) molRoot.rotateOnWorldAxis(UP, dt * 0.35);
   frameNo++;
+  inner.updateMatrixWorld(); if (!_lastMolM.equals(inner.matrixWorld)) { _lastMolM.copy(inner.matrixWorld); molVersion++; }
   if (xr) {
     ctrlPresent = controllerPresent(); updateBusyHands(); xrHoverAtom = null;
     for (const c of ctrls) {
@@ -1474,10 +1514,13 @@ renderer.setAnimationLoop(() => {
       const gh = guideHit(); if (gh) guideHover(gh.uv.x * GW, (1 - gh.uv.y) * GH); else if (guide.hoverOwner === c) guideHover(null, null); if (gh) guide.hoverOwner = c;
       const ph = gh || panelOrHandleHit();
       // atom under the ray (only when it matters: picking tools, or a teacher pointing for the class)
-      let ha = null;
-      if (!ph && !panelDrag && (S.tool !== 'grab' || G.role === 'teacher') && !(grabs.includes(c)) && (pickables && (pickables.idx.length < 8000 || (frameNo & 1) === 0))) ha = hoverPick(); else if (!ph && pickables && pickables.idx.length >= 8000 && (frameNo & 1)) ha = c.userData.hoverAtom ?? null;
+      let ha = null; const u = c.userData;
+      const still = u.lastD && u.lastD.dot(u.d) > 0.999995 && u.lastO.distanceToSquared(u.o) < 1e-7 && molVersion === u.lastMolV;
+      if (still && !ph) ha = u.hoverAtom ?? null;
+      else if (!ph && !panelDrag && (S.tool !== 'grab' || G.role === 'teacher') && !(grabs.includes(c)) && (pickables && (pickables.idx.length < 8000 || (frameNo & 1) === 0))) ha = hoverPick(); else if (!ph && pickables && pickables.idx.length >= 8000 && (frameNo & 1)) ha = c.userData.hoverAtom ?? null;
+      if (!u.lastD) { u.lastD = new THREE.Vector3(); u.lastO = new THREE.Vector3(); } u.lastD.copy(u.d); u.lastO.copy(u.o); u.lastMolV = molVersion;
       if (ha !== (c.userData.hoverAtom ?? null) && ha !== null && S.tool !== 'grab') tick(c);
-      c.userData.hoverAtom = ha; c.userData.hoverHist.push({ t: performance.now(), a: ha }); while (c.userData.hoverHist.length > 2 && performance.now() - c.userData.hoverHist[0].t > 300) c.userData.hoverHist.shift();
+      c.userData.hoverAtom = ha; if (c.userData.cur) c.userData.cur.a = ha;
       if (ha !== null && xrHoverAtom === null) xrHoverAtom = ha;
       let len = 2;
       if (ph) len = ph.distance; else if (ha !== null) { const a = mol.atoms[ha]; _hp.set(a.x, a.y, a.z); inner.localToWorld(_hp); len = _hp.distanceTo(c.userData.o); }
@@ -1518,11 +1561,12 @@ renderer.setAnimationLoop(() => {
   const sw = scaler.scale.x; const H = xr ? 0.016 : 0.02;
   showHover(xr ? xrHoverAtom : deskHover);
   groupTick(dt, xr);
-  for (const sp of [...labelSprites, ...persistentLabels]) { sp.scale.set(H * sp.userData.aspect / sw, H / sw, 1); sp.center.set(0.5, -((sp.userData.lift || 1) * 0.25)); }
+  for (const arr of LABEL_ARRS) for (const sp of arr) { sp.scale.set(H * sp.userData.aspect / sw, H / sw, 1); sp.center.set(0.5, -((sp.userData.lift || 1) * 0.25)); }
   renderer.render(scene, camera);
 });
 
 updateDom(); drawPanel(); resetView();
+if (new URLSearchParams(location.search).has('debug')) window.__bmdbg = { S, LESSONS, loadPDB, loadSmall, startLesson, applyStep, exitLesson, rebuild, refreshOverlay, renderer, get mol() { return mol; }, get lesson() { return lesson; }, get measures() { return measures; }, get selAtom() { return selAtom; }, hiddenChains, onPickAtom, addMeasure, busyHand, get UI() { return UI; }, parseCIF, parsePDB, buildModel, drawPanel, get pickables() { return pickables; } };
 window.__biomol = { group: () => ({ role: G.role, room: G.room, status: G.status, students: G.students.size, follow: G.follow }), guide: () => ({ on: guide.on, i: guide.i }), mol: () => ({ q: molRoot.quaternion.toArray().map(v => +v.toFixed(3)), p: molRoot.position.toArray().map(v => +v.toFixed(3)), z: +S.userZoom.toFixed(3), grabs: grabs.length, pts: grabs.map(c => [c.userData.k, !!(c.userData.src && c.userData.src.hand), !!handOf(c), grabPoint(c, new THREE.Vector3()).toArray().map(v => +v.toFixed(3))]), v0: two.v0.toArray().map(v => +v.toFixed(3)) }), pointer: () => [G.pointer, markGroup.visible, G.lastPose] };
 // start with something to look at
 loadPDB('1HVR');
