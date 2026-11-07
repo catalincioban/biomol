@@ -45,7 +45,7 @@ const TXT = {
     reset:'Resetează', recenter:'Adu aici', spin:'Rotire', ready:'Gata',
     xrAR:'Intră în AR', xrVR:'Intră în VR', xrNo:'AR disponibil pe Magic Leap 2 (WebXR)',
     hint:'Mouse: stânga = rotește, dreapta = mută, rotiță = zoom. Click pe un atom (fără să tragi) = folosește unealta aleasă.',
-    help:'Bumper: ține apăsat ca să apuci molecula (sau meniul, dacă țintești spre el). Touchpad: sus/jos = mărire, stânga/dreapta = rotire. Mâinile: apasă butoanele cu degetul; pinch în moleculă = o apuci și o rotești din încheietură; cu ambele mâini (sau controller + mâna liberă) o rotești, o muți și o mărești.',
+    help:'Bumper: ține apăsat ca să apuci molecula (sau meniul, dacă țintești spre el); ținut 1 s fără să miști controller-ul = aduci scena în fața ta. Touchpad: sus/jos = mărire, stânga/dreapta = rotire. Mâinile: apasă butoanele cu degetul; pinch în moleculă = o apuci și o rotești din încheietură; cu ambele mâini (sau controller + mâna liberă) o rotești, o muți și o mărești.',
     chain:'lanț', atom:'atom', protein:'proteină', nucleic:'acid nucleic', ligand:'ligand', ion:'ion', water:'apă',
     hydrophobic:'hidrofob', polar:'polar', basic:'bazic (+)', acidic:'acid (−)',
     atoms:'atomi', residues:'resturi', chains:'lanțuri', offline:'(merge și fără internet)',
@@ -57,7 +57,7 @@ const TXT = {
     grpEnd:'Încheie sesiunea', grpRoom:'Introdu codul primit de la profesor', join:'Intră', grpSession:'Sesiunea {c}',
     grpTeacherOn:'Profesorul este conectat', grpTeacherOff:'Se așteaptă profesorul…', grpFollow:'Urmăresc profesorul', grpLeave:'Ieși din sesiune',
     grpFollowInfo:'Când urmărești profesorul, molecula ta se schimbă odată cu a lui. Oprește urmărirea ca să explorezi singur.', teacher:'Profesor', grpBadCode:'Cod invalid',
-    guideBtn:'Ghid de utilizare', guideDesk:'Ghidul pornește în AR, pe căști.', guideTitle:'Ghid', skipGuide:'Sari peste ghid', skipStep:'Sari pasul', close:'Închide', bravo:'✓ Bravo!',
+    guideBtn:'Ghid de utilizare', dotsLbl:'Puncte pe arătătoare:', yes:'Da', no:'Nu', recentered:'Scena a venit la tine', guideDesk:'Ghidul pornește în AR, pe căști.', guideTitle:'Ghid', skipGuide:'Sari peste ghid', skipStep:'Sari pasul', close:'Închide', bravo:'✓ Bravo!',
   },
   en: {
     tabMol:'Molecules', tabView:'Display', tabTools:'Tools', tabLearn:'Lessons',
@@ -73,7 +73,7 @@ const TXT = {
     reset:'Reset', recenter:'Bring here', spin:'Spin', ready:'Ready',
     xrAR:'Enter AR', xrVR:'Enter VR', xrNo:'AR available on Magic Leap 2 (WebXR)',
     hint:'Mouse: left = rotate, right = pan, wheel = zoom. Click an atom (without dragging) = use the selected tool.',
-    help:'Bumper: hold to grab the molecule (or the menu, if you point at it). Touchpad: up/down = scale, left/right = rotate. Hands: press buttons with your finger; pinch inside the molecule = grab it and turn your wrist to rotate; with both hands (or controller + free hand) you rotate, move and scale it.',
+    help:'Bumper: hold to grab the molecule (or the menu, if you point at it); hold it still for 1 s = bring the scene in front of you. Touchpad: up/down = scale, left/right = rotate. Hands: press buttons with your finger; pinch inside the molecule = grab it and turn your wrist to rotate; with both hands (or controller + free hand) you rotate, move and scale it.',
     chain:'chain', atom:'atom', protein:'protein', nucleic:'nucleic acid', ligand:'ligand', ion:'ion', water:'water',
     hydrophobic:'hydrophobic', polar:'polar', basic:'basic (+)', acidic:'acidic (−)',
     atoms:'atoms', residues:'residues', chains:'chains', offline:'(works offline)',
@@ -85,7 +85,7 @@ const TXT = {
     grpEnd:'End session', grpRoom:'Enter the code from your teacher', join:'Join', grpSession:'Session {c}',
     grpTeacherOn:'Teacher is connected', grpTeacherOff:'Waiting for the teacher…', grpFollow:'Follow the teacher', grpLeave:'Leave session',
     grpFollowInfo:'While following, your molecule changes with the teacher’s. Turn following off to explore on your own.', teacher:'Teacher', grpBadCode:'Invalid code',
-    guideBtn:'User guide', guideDesk:'The guide runs in AR, on the headset.', guideTitle:'Guide', skipGuide:'Skip guide', skipStep:'Skip step', close:'Close', bravo:'✓ Well done!',
+    guideBtn:'User guide', dotsLbl:'Index fingertip dots:', yes:'Yes', no:'No', recentered:'The scene came to you', guideDesk:'The guide runs in AR, on the headset.', guideTitle:'Guide', skipGuide:'Skip guide', skipStep:'Skip step', close:'Close', bravo:'✓ Well done!',
   }
 };
 const t = (k, o) => { let s = (TXT[LANG][k] ?? k); if (o) for (const q in o) s = s.replace('{' + q + '}', o[q]); return s; };
@@ -359,7 +359,8 @@ const reps = new THREE.Group(); inner.add(reps);
 const overlay = new THREE.Group(); inner.add(overlay);       // labels, measurements, selection
 
 /* ============================== state ============================== */
-const S = { mode:'cartoon', color:'chain', water:false, hyd:false, lig:true, side:false, tool:'grab', spin:false, userZoom:1 };
+let DOTS0 = true; try { DOTS0 = localStorage.getItem('biomol-dots') !== '0'; } catch (e) {}
+const S = { dots: DOTS0, mode:'cartoon', color:'chain', water:false, hyd:false, lig:true, side:false, tool:'grab', spin:false, userZoom:1 };
 let mol = null, molInfo = null;
 const hiddenChains = new Set();
 let lessonView = null;         // {chains, hl:Set(res), dim, labels}
@@ -905,7 +906,11 @@ function drawToolsTab(y) {
   const hw = (PW - 80 - 16) / 2;
   button('clr', 40, y, hw, 66, t('clearM'), () => { measures = []; picks = []; selAtom = null; refreshOverlay(); }, { fs: 27 });
   button('guide', 40 + hw + 16, y, hw, 66, '🧭 ' + t('guideBtn'), () => { if (renderer.xr.isPresenting) startGuide(); else setMsg(t('guideDesk')); }, { fs: 27 });
-  y += 110;
+  y += 82;
+  g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = FONT('600', 26); g.fillStyle = C.dim; g.fillText(t('dotsLbl'), 46, y + 31);
+  const dw = (PW - 80 - 330 - 10) / 2;
+  [[true, t('yes')], [false, t('no')]].forEach(([v, lb], k) => button('dots_' + k, 370 + k * (dw + 10), y, dw, 62, lb, () => { S.dots = v; try { localStorage.setItem('biomol-dots', v ? '1' : '0'); } catch (e) {} drawPanel(); }, { on: S.dots === v, fs: 26 }));
+  y += 100;
   g.textAlign = 'left'; g.textBaseline = 'alphabetic';
   const lines = [];
   if (selAtom !== null && mol) lines.push(...atomDescription(selAtom).map(s => ['#eaf7ff', s]));
@@ -914,7 +919,7 @@ function drawToolsTab(y) {
   let yy = y;
   for (const [c, s] of lines) for (const l of wrap(s, PW - 100, FONT('500', 30))) { g.font = FONT('500', 30); g.fillStyle = c; g.fillText(l, 48, yy); yy += 40; }
   if (measures.length) { yy += 16; section(t('measures'), yy); yy += 46;
-    for (const m of measures.slice(-4)) { g.font = FONT('700', 30); g.fillStyle = '#ffe14a'; g.fillText(m.text, 48, yy); const s = fitFont(m.names, PW - 260, 24, '500'); g.fillStyle = C.dim; g.fillText(m.names, 210, yy); yy += 42; } }
+    for (const m of measures.slice(-3)) { g.font = FONT('700', 30); g.fillStyle = '#ffe14a'; g.fillText(m.text, 48, yy); const s = fitFont(m.names, PW - 260, 24, '500'); g.fillStyle = C.dim; g.fillText(m.names, 210, yy); yy += 42; } }
   const hy = PH - 250; for (const [k, l] of wrap(t('help'), PW - 100, FONT('500', 24)).entries()) { g.font = FONT('500', 24); g.fillStyle = C.dim; g.fillText(l, 48, hy + k * 32); }
 }
 function drawLearnTab(y) {
@@ -1038,8 +1043,8 @@ for (let k = 0; k < 4; k++) {
   c.addEventListener('disconnected', () => { c.userData.src = null; release(c); dot.visible = false; line.visible = false; c.userData.fo = null; c.userData.hoverAtom = null; });
   c.addEventListener('selectstart', () => onSelect(c));
   c.addEventListener('selectend', () => { release(c); endPanelDrag(c); });
-  c.addEventListener('squeezestart', () => { if (ignoredHand(c)) return; setRayPast(c); const h = panelOrHandleHit(); if (h) startPanelDrag(c, h); else startGrab(c); });
-  c.addEventListener('squeezeend', () => { release(c); endPanelDrag(c); });
+  c.addEventListener('squeezestart', () => { if (ignoredHand(c)) return; setRayPast(c); const h = panelOrHandleHit(); if (h) startPanelDrag(c, h); else { const onM = molSphereHit(); startGrab(c); if (!onM && !(c.userData.src && c.userData.src.hand)) c.userData.rc = { t: performance.now(), p: new THREE.Vector3().setFromMatrixPosition(c.matrixWorld) }; } });
+  c.addEventListener('squeezeend', () => { release(c); endPanelDrag(c); c.userData.rc = null; });
   scene.add(c); ctrls.push(c);
 }
 // One Euro filter: strong smoothing when the hand is still (tremor), almost none during fast moves (no lag)
@@ -1087,6 +1092,23 @@ function updatePanelDrag(dt) {
 function molSphereHit() {
   if (!mol) return false; const c = new THREE.Vector3(); molRoot.getWorldPosition(c); const r = mol.radius * scaler.scale.x * 0.95;
   return raycaster.ray.distanceSqToPoint(c) < r * r;
+}
+const rcRing = new THREE.Mesh(new THREE.RingGeometry(0.016, 0.023, 48, 1, 0, 0.01), new THREE.MeshBasicMaterial({ color: 0x7fe9ff, transparent: true, opacity: 0.95, depthTest: false, side: THREE.DoubleSide }));
+rcRing.renderOrder = 30; rcRing.visible = false; scene.add(rcRing); let rcTheta = -1; const _rcp = new THREE.Vector3(), _rch = new THREE.Vector3();
+function updateRecenter() {
+  let shown = false;
+  for (const c of ctrls) {
+    const rc = c.userData.rc; if (!rc || !c.userData.src) continue;
+    _rcp.setFromMatrixPosition(c.matrixWorld); if (_rcp.distanceTo(rc.p) > 0.035) { c.userData.rc = null; continue; } // moving = normal grab
+    const f = (performance.now() - rc.t) / 1000;
+    if (f >= 1) { c.userData.rc = null; release(c); placeInFront(); buzz(c); setMsg(t('recentered')); continue; }
+    if (f < 0.2) continue;
+    shown = true; const th = Math.min(1, (f - 0.2) / 0.8) * Math.PI * 2;
+    if (Math.abs(th - rcTheta) > 0.04) { rcTheta = th; rcRing.geometry.dispose(); rcRing.geometry = new THREE.RingGeometry(0.016, 0.023, 48, 1, Math.PI / 2 - th, th); }
+    setRay(c); rcRing.position.copy(raycaster.ray.origin).addScaledVector(raycaster.ray.direction, 0.3);
+    renderer.xr.getCamera().getWorldPosition(_rch); rcRing.lookAt(_rch);
+  }
+  rcRing.visible = shown; if (!shown) rcTheta = -1;
 }
 function buzz(c) { try { c.userData.src?.gamepad?.hapticActuators?.[0]?.pulse(0.35, 25); } catch (e) {} }
 function onSelect(c) {
@@ -1167,19 +1189,18 @@ function updateHands() {
   for (const h of hands) {
     if (busyHand[h.k]) { h.vis.visible = false; h.poked = h.pokedG = false; if (grabs.includes(h.ctrl)) release(h.ctrl); continue; }
     const J = h.hand.joints; if (!h.active || !J || !J['wrist'] || !J['index-finger-tip'] || !J['index-finger-tip'].visible) { h.vis.visible = false; if (h.ctrl) h.ctrl.userData.line.visible = true; continue; }
-    h.vis.visible = true;
+    h.vis.visible = S.dots; h.bones.visible = false;
     J['index-finger-tip'].getWorldPosition(tipW); J['thumb-tip'].getWorldPosition(thumbW);
     const pinch = THREE.MathUtils.clamp(1 - (tipW.distanceTo(thumbW) - 0.015) / 0.04, 0, 1);
     const pos = h.bones.geometry.attributes.position.array; const P = [];
     JOINTS.forEach((name, i) => {
       const j = J[name]; if (j) j.getWorldPosition(jp); P.push(jp.clone());
       const tip = name.endsWith('tip'); const r = THREE.MathUtils.clamp((j && j.jointRadius ? j.jointRadius : 0.008) * (tip ? 0.75 : 0.55), 0.003, name === 'wrist' ? 0.007 : 0.0055);
-      tmpM.makeScale(r, r, r).setPosition(jp); h.jm.setMatrixAt(i, tmpM);
+      const rr = name === 'index-finger-tip' ? r : 0; tmpM.makeScale(rr, rr, rr).setPosition(jp); h.jm.setMatrixAt(i, tmpM);
       const glow = (name === 'index-finger-tip' || name === 'thumb-tip') ? pinch : 0;
       cJ.setRGB(0.18 + 0.82 * glow, 0.83 + 0.17 * glow, 1); h.jm.setColorAt(i, cJ);
     });
-    BONES.forEach(([a, b], i) => { pos.set([P[a].x, P[a].y, P[a].z, P[b].x, P[b].y, P[b].z], i * 6); });
-    h.jm.instanceMatrix.needsUpdate = true; if (h.jm.instanceColor) h.jm.instanceColor.needsUpdate = true; h.bones.geometry.attributes.position.needsUpdate = true;
+    h.jm.instanceMatrix.needsUpdate = true; if (h.jm.instanceColor) h.jm.instanceColor.needsUpdate = true;
     // fingertip glow + direct touch on the menu
     h.tipGlow.position.copy(tipW); h.tipGlow.scale.setScalar(1 + pinch * 0.8);
     if (guideMesh.visible) {
@@ -1494,6 +1515,7 @@ renderer.setAnimationLoop(() => {
       }
     }
     if (panelDrag) updatePanelDrag(dt);
+    updateRecenter();
     updateHands();
     if (grabSettle > 0 && grabs.length) { grabSettle--; refreshGrab(); }
     else if (grabs.length === 1) {
