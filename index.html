@@ -432,7 +432,7 @@ function disposeGroup(gp) { gp.traverse(o => { if (o.geometry && !o.userData.kee
 
 function rebuild() {
   disposeGroup(reps); atomMeshes = []; cartoonMeshes = [];
-  if (!mol) { disposeGroup(overlay); drawPanel(); return; }
+  if (!mol) { disposeGroup(overlay); pickables = null; drawPanel(); return; }
   computeStyles();
   const vis = mol.atoms.filter(a => a.style !== 'none');
   const nAll = vis.length; const seg = nAll < 1500 ? [20, 14] : nAll < 7000 ? [12, 9] : [8, 6];
@@ -478,7 +478,33 @@ function rebuild() {
     im.count = k; im.instanceMatrix.needsUpdate = true; im.instanceColor.needsUpdate = true; reps.add(im);
   }
   if (S.mode === 'cartoon') buildCartoon();
+  buildPickables();
   rebuildOverlay(); drawPanel(); groupChanged();
+}
+let pickables = null;
+function buildPickables() {
+  const idx = [], rad = [], seen = new Set(), L = lessonView;
+  for (const a of mol.atoms) if (a.style !== 'none') { idx.push(a.i); rad.push(Math.max(atomRadius(a), 0.4)); seen.add(a.i); }
+  if (S.mode === 'cartoon') for (const r of mol.residues) {
+    if (r.kind !== 'protein' && r.kind !== 'nucleic') continue; if (hiddenChains.has(r.chain) || (L && L.chains && !L.chains.includes(r.chain))) continue;
+    const i = r.ca ?? r.p ?? r.c4; if (i !== undefined && !seen.has(i)) { idx.push(i); rad.push(1.4); }
+  }
+  pickables = { idx: Int32Array.from(idx), rad: Float32Array.from(rad) };
+}
+const _inv = new THREE.Matrix4(), _lr = new THREE.Ray();
+// precise picking: front-most atom under the ray, otherwise the nearest atom within ~1.7° (snapping)
+function hoverPick() {
+  if (!mol || !pickables || !pickables.idx.length) return null;
+  inner.updateMatrixWorld(); _inv.copy(inner.matrixWorld).invert(); _lr.copy(raycaster.ray).applyMatrix4(_inv);
+  const o = _lr.origin, d = _lr.direction, A = mol.atoms, I = pickables.idx, Rr = pickables.rad;
+  let hit = null, hitT = Infinity, near = null, nearA = Infinity;
+  for (let k = 0; k < I.length; k++) {
+    const a = A[I[k]]; const vx = a.x - o.x, vy = a.y - o.y, vz = a.z - o.z; const t = vx * d.x + vy * d.y + vz * d.z; if (t <= 0) continue;
+    const p2 = vx * vx + vy * vy + vz * vz - t * t, r = Rr[k];
+    if (p2 < r * r) { if (t < hitT) { hitT = t; hit = I[k]; } }
+    else if (hit === null) { const ang = (Math.sqrt(p2) - r) / t; if (ang < nearA) { nearA = ang; near = I[k]; } }
+  }
+  return hit !== null ? hit : (nearA < 0.03 ? near : null);
 }
 function rebuildOverlay() { disposeGroup(overlay); labelSprites = []; if (!mol) return; buildLabels(); buildMeasures(); buildSelection(); }
 function refreshOverlay() { rebuildOverlay(); drawPanel(); groupChanged(); }
@@ -913,11 +939,17 @@ function drawLearnTab(y) {
   button('l_exit', 40 + 2 * (bw + 12), by, bw, 84, t('exit'), () => exitLesson());
 }
 function panelPress(x, y) { for (const b of buttons) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { b.act(); return true; } return false; }
-function buttonAt(x, y) { if (x === null) return null; for (const b of buttons) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b; return null; }
+function buttonAt(x, y, tol = 0) {
+  if (x === null) return null; let best = null, bd = tol;
+  for (const b of buttons) { const dx = Math.max(b.x - x, 0, x - (b.x + b.w)), dy = Math.max(b.y - y, 0, y - (b.y + b.h)); const d = Math.hypot(dx, dy); if (d === 0) return b; if (d <= bd) { bd = d; best = b; } }
+  return best;
+}
+const XR_TOL = 18;
 function panelHover(x, y) { const b = buttonAt(x, y); const id = b ? b.id : null; if (id !== UI.hover) { UI.hover = id; drawPanel(); } }
 function xrHover(x, y) { // cheap hover in XR: move a highlight quad, no texture upload
-  const b = buttonAt(x, y); hoverQuad.visible = !!b;
+  const b = buttonAt(x, y, XR_TOL); hoverQuad.visible = !!b;
   if (b) { hoverQuad.position.set(((b.x + b.w / 2) / PW - 0.5) * PANEL_W, (0.5 - (b.y + b.h / 2) / PH) * PANEL_H, 0.002); hoverQuad.scale.set(b.w / PW * PANEL_W, b.h / PH * PANEL_H, 1); }
+  return b ? b.id : null;
 }
 function zoomBy(f) { S.userZoom = THREE.MathUtils.clamp(S.userZoom * f, 0.15, 14); }
 
@@ -938,14 +970,17 @@ addEventListener('keydown', e => {
 let downPos = null;
 renderer.domElement.addEventListener('pointerdown', e => { downPos = [e.clientX, e.clientY]; });
 let lastPtrCast = 0;
+let deskHover = null;
 renderer.domElement.addEventListener('pointermove', e => {
-  if (G.role !== 'teacher' || !mol || e.buttons) return; const now = performance.now(); if (now - lastPtrCast < 90) return; lastPtrCast = now;
-  raycaster.setFromCamera(new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera); G.pointer = pickWithRay();
+  if (!mol || e.buttons) return; const now = performance.now(); if (now - lastPtrCast < 40) return; lastPtrCast = now;
+  raycaster.setFromCamera(new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1), camera); deskHover = hoverPick();
+  if (G.role === 'teacher') G.pointer = deskHover;
 });
+renderer.domElement.addEventListener('pointerleave', () => { deskHover = null; if (G.role === 'teacher') G.pointer = null; });
 renderer.domElement.addEventListener('pointerup', e => {
   if (!downPos || e.button !== 0) return; const moved = Math.hypot(e.clientX - downPos[0], e.clientY - downPos[1]); downPos = null; if (moved > 6 || !mol) return;
   const ndc = new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  raycaster.setFromCamera(ndc, camera); const i = pickWithRay();
+  raycaster.setFromCamera(ndc, camera); let i = hoverPick(); if (i === null) i = pickWithRay();
   if (i !== null) onPickAtom(i); else if (selAtom !== null && S.tool !== 'dist' && S.tool !== 'angle') { selAtom = null; refreshOverlay(); }
 });
 
@@ -997,17 +1032,43 @@ const rayGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0,
 for (let k = 0; k < 4; k++) {
   const c = renderer.xr.getController(k); c.userData.k = k;
   const grip = renderer.xr.getControllerGrip(k); scene.add(grip); c.userData.grip = grip;
-  const line = new THREE.Line(rayGeo, new THREE.LineBasicMaterial({ color: 0x9ff0ff, transparent: true, opacity: 0.85 })); line.scale.z = 2; c.add(line); c.userData.line = line;
+  const line = new THREE.Line(rayGeo, new THREE.LineBasicMaterial({ color: 0x9ff0ff, transparent: true, opacity: 0.85 })); line.scale.z = 2; line.visible = false; scene.add(line); c.userData.line = line;
   const dot = new THREE.Mesh(new THREE.SphereGeometry(0.006, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff })); dot.visible = false; scene.add(dot); c.userData.dot = dot;
   c.addEventListener('connected', e => { c.userData.src = e.data; line.visible = !!e.data.targetRayMode && e.data.targetRayMode !== 'screen'; });
-  c.addEventListener('disconnected', () => { c.userData.src = null; release(c); dot.visible = false; });
+  c.addEventListener('disconnected', () => { c.userData.src = null; release(c); dot.visible = false; line.visible = false; c.userData.fo = null; c.userData.hoverAtom = null; });
   c.addEventListener('selectstart', () => onSelect(c));
   c.addEventListener('selectend', () => { release(c); endPanelDrag(c); });
-  c.addEventListener('squeezestart', () => { if (ignoredHand(c)) return; setRay(c); const h = panelOrHandleHit(); if (h) startPanelDrag(c, h); else startGrab(c); });
+  c.addEventListener('squeezestart', () => { if (ignoredHand(c)) return; setRayPast(c); const h = panelOrHandleHit(); if (h) startPanelDrag(c, h); else startGrab(c); });
   c.addEventListener('squeezeend', () => { release(c); endPanelDrag(c); });
   scene.add(c); ctrls.push(c);
 }
-function setRay(c) { tmpM.identity().extractRotation(c.matrixWorld); raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld); raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tmpM); }
+// One Euro filter: strong smoothing when the hand is still (tremor), almost none during fast moves (no lag)
+const oeAlpha = (dt, cut) => 1 / (1 + 1 / (2 * Math.PI * cut) / dt);
+class OneEuro3 {
+  constructor(minCut, beta, dCut = 1) { this.minCut = minCut; this.beta = beta; this.dCut = dCut; this.x = null; this.dx = new THREE.Vector3(); }
+  filter(v, dt) { dt = Math.max(dt, 1e-3); if (!this.x) { this.x = v.clone(); this.dx.set(0, 0, 0); return this.x; }
+    const d = v.clone().sub(this.x).divideScalar(dt); this.dx.lerp(d, oeAlpha(dt, this.dCut)); this.x.lerp(v, oeAlpha(dt, this.minCut + this.beta * this.dx.length())); return this.x; }
+}
+const _ro = new THREE.Vector3(), _rd = new THREE.Vector3(), _rm = new THREE.Matrix4(), NEG_Z = new THREE.Vector3(0, 0, -1);
+function updateRayFilter(c, dt) {
+  const u = c.userData; if (!u.fo) { u.fo = new OneEuro3(1.4, 18); u.fd = new OneEuro3(1.2, 3.5); u.hist = []; u.hoverHist = []; }
+  _rm.identity().extractRotation(c.matrixWorld); _ro.setFromMatrixPosition(c.matrixWorld); _rd.set(0, 0, -1).applyMatrix4(_rm);
+  u.o = u.fo.filter(_ro, dt); u.d = u.fd.filter(_rd, dt).normalize();
+  const now = performance.now(); u.hist.push({ t: now, o: u.o.clone(), d: u.d.clone() }); while (u.hist.length > 2 && now - u.hist[0].t > 300) u.hist.shift();
+}
+function setRay(c) {
+  const u = c.userData; if (u.o) { raycaster.ray.origin.copy(u.o); raycaster.ray.direction.copy(u.d); return; }
+  tmpM.identity().extractRotation(c.matrixWorld); raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld); raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tmpM);
+}
+// pulling the trigger nudges the controller: use where the ray pointed ~80 ms before the press
+const PRESS_LAG = 80;
+function setRayPast(c, ms = PRESS_LAG) {
+  const u = c.userData; if (!u.hist || !u.hist.length) return setRay(c);
+  const tt = performance.now() - ms; let smp = u.hist[0]; for (const h of u.hist) { if (h.t <= tt) smp = h; else break; }
+  raycaster.ray.origin.copy(smp.o); raycaster.ray.direction.copy(smp.d);
+}
+function pastHover(c, ms = PRESS_LAG) { const H = c.userData.hoverHist; if (!H || !H.length) return c.userData.hoverAtom ?? null; const tt = performance.now() - ms; let v = H[0].a; for (const h of H) { if (h.t <= tt) v = h.a; else break; } return v; }
+function tick(c) { try { c.userData.src?.gamepad?.hapticActuators?.[0]?.pulse(0.12, 8); } catch (e) {} }
 function panelHit() { if (!panelMesh.visible) return null; const h = raycaster.intersectObject(panelMesh, false)[0]; return h || null; }
 function handleHit() { if (!panelMesh.visible) return null; return raycaster.intersectObject(handleMesh, false)[0] || null; }
 function panelOrHandleHit() { return handleHit() || panelHit(); }
@@ -1032,14 +1093,15 @@ function onSelect(c) {
   if (ignoredHand(c)) return;
   // hands: pinching inside the molecule grabs it directly (no ray needed)
   if (c.userData.src && c.userData.src.hand && mol && pinchInsideMolecule(c)) { startGrab(c); return; }
-  setRay(c);
+  setRayPast(c);
   const gh = guideHit(); if (gh) { guidePress(gh.uv.x * GW, (1 - gh.uv.y) * GH); buzz(c); return; }
   const hh = handleHit(); if (hh) { startPanelDrag(c, hh); return; }
   const ph = panelHit();
-  if (ph) { const x = ph.uv.x * PW, y = (1 - ph.uv.y) * PH; if (!panelPress(x, y) && y < 190) startPanelDrag(c, ph); else buzz(c); return; }
+  if (ph) { const x = ph.uv.x * PW, y = (1 - ph.uv.y) * PH; const b = buttonAt(x, y, XR_TOL); if (b) { b.act(); buzz(c); } else if (y < 190) startPanelDrag(c, ph); return; }
   if (!mol) return;
   if (S.tool === 'grab') { if (molSphereHit()) { startGrab(c); buzz(c); } return; }
-  const i = pickWithRay(); if (i !== null) { onPickAtom(i); buzz(c); }
+  let i = pastHover(c); if (i === null) i = hoverPick(); if (i === null) i = pickWithRay();
+  if (i !== null) { onPickAtom(i); buzz(c); }
 }
 let grabSettle = 0;
 function startGrab(c) { if (grabs.includes(c)) return; grabs.push(c); refreshGrab(); if (c.userData.src && c.userData.src.hand) grabSettle = 4; }
@@ -1150,9 +1212,23 @@ const markGroup = new THREE.Group(); inner.add(markGroup); markGroup.visible = f
 { const ring = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.12, 8, 32), new THREE.MeshBasicMaterial({ color: 0xffa24a, transparent: true, opacity: 0.9, depthTest: false })); ring.renderOrder = 12; markGroup.add(ring); markGroup.userData.ring = ring;
   const glow = new THREE.Mesh(new THREE.SphereGeometry(1.0, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffa24a, transparent: true, opacity: 0.35, depthTest: false, blending: THREE.AdditiveBlending })); glow.renderOrder = 12; markGroup.add(glow); }
 let markLabel = null;
-function setMarkLabel() { if (markLabel) { markGroup.remove(markLabel); markLabel.material.map.dispose(); markLabel.material.dispose(); persistentLabels.length = 0; }
+function setMarkLabel() { if (markLabel) { markGroup.remove(markLabel); markLabel.material.map.dispose(); markLabel.material.dispose(); const k = persistentLabels.indexOf(markLabel); if (k >= 0) persistentLabels.splice(k, 1); }
   markLabel = makeLabel('👆 ' + t('teacher'), '#ffc27a'); labelSprites.pop(); markLabel.userData.lift = 1.2; markGroup.add(markLabel); persistentLabels.push(markLabel); }
 const topic = (k) => `biomol-ar/v1/${G.room}/${k}`;
+const hoverGroup = new THREE.Group(); inner.add(hoverGroup); hoverGroup.visible = false;
+const hoverRing = new THREE.Mesh(new THREE.TorusGeometry(1, 0.1, 8, 36), new THREE.MeshBasicMaterial({ color: 0x9ff0ff, transparent: true, opacity: 0.95, depthTest: false })); hoverRing.renderOrder = 13; hoverGroup.add(hoverRing);
+let hoverLabel = null, hoverShown = null; const _cw = new THREE.Vector3();
+function showHover(i) {
+  if (i === null || i === undefined || !mol || !mol.atoms[i] || S.tool === 'grab') { hoverGroup.visible = false; hoverShown = null; return; }
+  const a = mol.atoms[i]; hoverGroup.visible = true; hoverGroup.position.set(a.x, a.y, a.z);
+  const r = (a.style === 'none' ? 1.2 : Math.max(atomRadius(a), 0.35) * 1.45 + 0.15); hoverRing.scale.setScalar(Math.max(r, 0.005 / scaler.scale.x));
+  (renderer.xr.isPresenting ? renderer.xr.getCamera() : camera).getWorldPosition(_cw); hoverRing.lookAt(_cw);
+  if (hoverShown !== i) {
+    hoverShown = i;
+    if (hoverLabel) { hoverGroup.remove(hoverLabel); hoverLabel.material.map.dispose(); hoverLabel.material.dispose(); const k = persistentLabels.indexOf(hoverLabel); if (k >= 0) persistentLabels.splice(k, 1); }
+    hoverLabel = makeLabel(mol.small ? a.name : `${a.name} · ${resLabel(mol.residues[a.res])}`, '#9ff0ff'); labelSprites.pop(); hoverLabel.userData.lift = 1.1; hoverGroup.add(hoverLabel); persistentLabels.push(hoverLabel);
+  }
+}
 async function mqttConnect(url) {
   if (!mqttMod) mqttMod = await import('https://cdn.jsdelivr.net/npm/mqtt@5.16.1/dist/mqtt.esm.js');
   const lib = mqttMod.default || mqttMod;
@@ -1240,7 +1316,7 @@ function groupTick(dt, xr) {
     G.poseTimer += dt;
     if (G.poseTimer > 0.1) {
       G.poseTimer = 0;
-      if (xr) { const c = ctrls.find(q => q.userData.src); if (c) { setRay(c); G.pointer = guideHit() || panelOrHandleHit() ? null : pickWithRay(); } }
+      if (xr) G.pointer = xrHoverAtom;
       qTmp.copy(viewerFrame(qFrame)).invert().multiply(molRoot.quaternion);
       const pose = { q: qTmp.toArray().map(v => +v.toFixed(3)), z: +S.userZoom.toFixed(3), p: G.pointer ?? null };
       const sig = JSON.stringify(pose);
@@ -1373,7 +1449,10 @@ function updateGuide(dt) {
 
 /* ============================== loop ============================== */
 const clock = new THREE.Clock();
-const tmpScale = new THREE.Vector3(), prevMolPos = new THREE.Vector3();
+const tmpScale = new THREE.Vector3(), prevMolPos = new THREE.Vector3(), _hp = new THREE.Vector3();
+let frameNo = 0, xrHoverAtom = null;
+// touchpad: dead zone + quadratic response = fine control for small movements, fast for big ones
+const padCurve = (v) => { const a = Math.abs(v || 0); if (a < 0.18) return 0; const n = (a - 0.18) / 0.82; return Math.sign(v) * n * n; };
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.1);
   const xr = renderer.xr.isPresenting;
@@ -1382,22 +1461,36 @@ renderer.setAnimationLoop(() => {
   pivot.lerp(pivotTarget, 1 - Math.pow(0.002, dt)); inner.position.copy(pivot).negate();
   const zl = xr ? 1 + (zoomLesson - 1) * 0.55 : zoomLesson; const targetS = fitScale * zl * S.userZoom; const cs = scaler.scale.x; scaler.scale.setScalar(cs + (targetS - cs) * (1 - Math.pow(0.001, dt)));
   if (S.spin && !grabs.length) molRoot.rotateOnWorldAxis(UP, dt * 0.35);
+  frameNo++;
   if (xr) {
-    ctrlPresent = controllerPresent(); updateBusyHands();
+    ctrlPresent = controllerPresent(); updateBusyHands(); xrHoverAtom = null;
     for (const c of ctrls) {
       if (!c.userData.src) continue;
-      if (ignoredHand(c)) { c.userData.line.visible = false; c.userData.dot.visible = false; continue; }
+      updateRayFilter(c, dt);
+      if (ignoredHand(c)) { c.userData.line.visible = false; c.userData.dot.visible = false; c.userData.hoverAtom = null; continue; }
       setRay(c);
+      const L = c.userData.line; L.position.copy(c.userData.o); L.quaternion.setFromUnitVectors(NEG_Z, c.userData.d);
+      if (!c.userData.src.hand) L.visible = c.userData.src.targetRayMode !== 'screen';
       const gh = guideHit(); if (gh) guideHover(gh.uv.x * GW, (1 - gh.uv.y) * GH); else if (guide.hoverOwner === c) guideHover(null, null); if (gh) guide.hoverOwner = c;
-      const ph = gh || panelOrHandleHit(); const len = ph ? ph.distance : 2; c.userData.line.scale.z = len;
-      c.userData.dot.visible = !!ph; if (ph) c.userData.dot.position.copy(ph.point);
-      if (ph && ph.object === panelMesh && !gh) { xrHover(ph.uv.x * PW, (1 - ph.uv.y) * PH); hoverOwner = c; } else if (hoverOwner === c) { hoverQuad.visible = false; hoverOwner = null; }
+      const ph = gh || panelOrHandleHit();
+      // atom under the ray (only when it matters: picking tools, or a teacher pointing for the class)
+      let ha = null;
+      if (!ph && !panelDrag && (S.tool !== 'grab' || G.role === 'teacher') && !(grabs.includes(c)) && (pickables && (pickables.idx.length < 8000 || (frameNo & 1) === 0))) ha = hoverPick(); else if (!ph && pickables && pickables.idx.length >= 8000 && (frameNo & 1)) ha = c.userData.hoverAtom ?? null;
+      if (ha !== (c.userData.hoverAtom ?? null) && ha !== null && S.tool !== 'grab') tick(c);
+      c.userData.hoverAtom = ha; c.userData.hoverHist.push({ t: performance.now(), a: ha }); while (c.userData.hoverHist.length > 2 && performance.now() - c.userData.hoverHist[0].t > 300) c.userData.hoverHist.shift();
+      if (ha !== null && xrHoverAtom === null) xrHoverAtom = ha;
+      let len = 2;
+      if (ph) len = ph.distance; else if (ha !== null) { const a = mol.atoms[ha]; _hp.set(a.x, a.y, a.z); inner.localToWorld(_hp); len = _hp.distanceTo(c.userData.o); }
+      c.userData.line.scale.z = len;
+      c.userData.dot.visible = !!ph || (ha !== null && S.tool !== 'grab'); if (ph) c.userData.dot.position.copy(ph.point); else if (ha !== null) c.userData.dot.position.copy(_hp);
+      if (ph && ph.object === panelMesh && !gh) { const id = xrHover(ph.uv.x * PW, (1 - ph.uv.y) * PH); if (id !== c.userData.lastBtn && id) tick(c); c.userData.lastBtn = id; hoverOwner = c; } else { c.userData.lastBtn = null; if (hoverOwner === c) { hoverQuad.visible = false; hoverOwner = null; } }
       const gp = c.userData.src.gamepad;
       if (gp && gp.axes && !(panelDrag && panelDrag.c === c)) {
         const ax = Math.abs(gp.axes[2] || 0) > Math.abs(gp.axes[0] || 0) ? gp.axes[2] : gp.axes[0];
         const ay = Math.abs(gp.axes[3] || 0) > Math.abs(gp.axes[1] || 0) ? gp.axes[3] : gp.axes[1];
-        if (Math.abs(ay) > 0.35) zoomBy(1 - ay * dt * 0.9);
-        if (Math.abs(ax) > 0.35) { molRoot.rotateOnWorldAxis(UP, ax * dt * 1.6); guideStats.rot += Math.abs(ax * dt * 1.6); }
+        const cy = padCurve(ay), cx = padCurve(ax);
+        if (cy) zoomBy(1 - cy * dt * 1.6);
+        if (cx) { molRoot.rotateOnWorldAxis(UP, cx * dt * 2.4); guideStats.rot += Math.abs(cx * dt * 2.4); }
       }
     }
     if (panelDrag) updatePanelDrag(dt);
@@ -1407,7 +1500,7 @@ renderer.setAnimationLoop(() => {
       prevMolPos.copy(molRoot.position); tmpM.multiplyMatrices(grabMatrix(grabs[0], _gm), grabRel);
       const isHand = !!(grabs[0].userData.src && grabs[0].userData.src.hand);
       if (isHand) { tmpM.decompose(_v, _rq, tmpScale); molRoot.position.lerp(_v, 0.55); molRoot.quaternion.slerp(_rq, 0.45); } // smooth hand jitter
-      else tmpM.decompose(molRoot.position, molRoot.quaternion, tmpScale);
+      else { tmpM.decompose(_v, _rq, tmpScale); molRoot.position.lerp(_v, 0.75); molRoot.quaternion.slerp(_rq, 0.7); }
       guideStats.grabMoved += prevMolPos.distanceTo(molRoot.position);
     } else if (grabs.length >= 2) {
       // two hands / controllers: move (midpoint), rotate (line between hands), scale (distance)
@@ -1423,6 +1516,7 @@ renderer.setAnimationLoop(() => {
   } else controls.update();
   // label sizing (constant size in meters)
   const sw = scaler.scale.x; const H = xr ? 0.016 : 0.02;
+  showHover(xr ? xrHoverAtom : deskHover);
   groupTick(dt, xr);
   for (const sp of [...labelSprites, ...persistentLabels]) { sp.scale.set(H * sp.userData.aspect / sw, H / sw, 1); sp.center.set(0.5, -((sp.userData.lift || 1) * 0.25)); }
   renderer.render(scene, camera);
