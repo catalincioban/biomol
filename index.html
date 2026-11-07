@@ -45,7 +45,7 @@ const TXT = {
     reset:'Resetează', recenter:'Adu aici', spin:'Rotire', ready:'Gata',
     xrAR:'Intră în AR', xrVR:'Intră în VR', xrNo:'AR disponibil pe Magic Leap 2 (WebXR)',
     hint:'Mouse: stânga = rotește, dreapta = mută, rotiță = zoom. Click pe un atom (fără să tragi) = folosește unealta aleasă.',
-    help:'Bumper: ține apăsat ca să apuci molecula (sau meniul, dacă țintești spre el). Touchpad: sus/jos = mărire, stânga/dreapta = rotire. Mâinile: apasă butoanele cu degetul; pinch în moleculă = o apuci și o rotești din încheietură; cu ambele mâini (sau controller + mâna liberă) o rotești, o muți și o mărești.',
+    help:'Când raza e pe moleculă apare un cerc albastru: poți apuca. Verde = o ții. Bumper: ține apăsat ca să apuci molecula (sau meniul, dacă țintești spre el). Touchpad: sus/jos = mărire, stânga/dreapta = rotire. Mâinile: apasă butoanele cu degetul; pinch în moleculă = o apuci și o rotești din încheietură; cu ambele mâini (sau controller + mâna liberă) o rotești, o muți și o mărești.',
     chain:'lanț', atom:'atom', protein:'proteină', nucleic:'acid nucleic', ligand:'ligand', ion:'ion', water:'apă',
     hydrophobic:'hidrofob', polar:'polar', basic:'bazic (+)', acidic:'acid (−)',
     atoms:'atomi', residues:'resturi', chains:'lanțuri', offline:'(merge și fără internet)',
@@ -57,7 +57,7 @@ const TXT = {
     grpEnd:'Încheie sesiunea', grpRoom:'Introdu codul primit de la profesor', join:'Intră', grpSession:'Sesiunea {c}',
     grpTeacherOn:'Profesorul este conectat', grpTeacherOff:'Se așteaptă profesorul…', grpFollow:'Urmăresc profesorul', grpLeave:'Ieși din sesiune',
     grpFollowInfo:'Când urmărești profesorul, molecula ta se schimbă odată cu a lui. Oprește urmărirea ca să explorezi singur.', teacher:'Profesor', grpBadCode:'Cod invalid',
-    guideBtn:'Ghid de utilizare', handsLbl:'Mâini în AR:', hOff:'Ascunse', hTips:'Vârfuri degete', hSkel:'Schelet', guideDesk:'Ghidul pornește în AR, pe căști.', guideTitle:'Ghid', skipGuide:'Sari peste ghid', skipStep:'Sari pasul', close:'Închide', bravo:'✓ Bravo!',
+    guideBtn:'Ghid de utilizare', domLbl:'Laser din mâna:', dRight:'Dreaptă', dLeft:'Stângă', diag:'Intrări', dCtrl:'controller', dHeld:'în mână', dIdle:'pe masă', dHand:'mână', dHidden:'ascunsă', handsLbl:'Mâini în AR:', hOff:'Ascunse', hTips:'Vârfuri degete', hSkel:'Schelet', guideDesk:'Ghidul pornește în AR, pe căști.', guideTitle:'Ghid', skipGuide:'Sari peste ghid', skipStep:'Sari pasul', close:'Închide', bravo:'✓ Bravo!',
   },
   en: {
     tabMol:'Molecules', tabView:'Display', tabTools:'Tools', tabLearn:'Lessons',
@@ -73,7 +73,7 @@ const TXT = {
     reset:'Reset', recenter:'Bring here', spin:'Spin', ready:'Ready',
     xrAR:'Enter AR', xrVR:'Enter VR', xrNo:'AR available on Magic Leap 2 (WebXR)',
     hint:'Mouse: left = rotate, right = pan, wheel = zoom. Click an atom (without dragging) = use the selected tool.',
-    help:'Bumper: hold to grab the molecule (or the menu, if you point at it). Touchpad: up/down = scale, left/right = rotate. Hands: press buttons with your finger; pinch inside the molecule = grab it and turn your wrist to rotate; with both hands (or controller + free hand) you rotate, move and scale it.',
+    help:'When the ray is on the molecule a blue circle appears: you can grab it. Green = holding it. Bumper: hold to grab the molecule (or the menu, if you point at it). Touchpad: up/down = scale, left/right = rotate. Hands: press buttons with your finger; pinch inside the molecule = grab it and turn your wrist to rotate; with both hands (or controller + free hand) you rotate, move and scale it.',
     chain:'chain', atom:'atom', protein:'protein', nucleic:'nucleic acid', ligand:'ligand', ion:'ion', water:'water',
     hydrophobic:'hydrophobic', polar:'polar', basic:'basic (+)', acidic:'acidic (−)',
     atoms:'atoms', residues:'residues', chains:'chains', offline:'(works offline)',
@@ -85,7 +85,7 @@ const TXT = {
     grpEnd:'End session', grpRoom:'Enter the code from your teacher', join:'Join', grpSession:'Session {c}',
     grpTeacherOn:'Teacher is connected', grpTeacherOff:'Waiting for the teacher…', grpFollow:'Follow the teacher', grpLeave:'Leave session',
     grpFollowInfo:'While following, your molecule changes with the teacher’s. Turn following off to explore on your own.', teacher:'Teacher', grpBadCode:'Invalid code',
-    guideBtn:'User guide', handsLbl:'Hands in AR:', hOff:'Hidden', hTips:'Fingertips', hSkel:'Skeleton', guideDesk:'The guide runs in AR, on the headset.', guideTitle:'Guide', skipGuide:'Skip guide', skipStep:'Skip step', close:'Close', bravo:'✓ Well done!',
+    guideBtn:'User guide', domLbl:'Laser from hand:', dRight:'Right', dLeft:'Left', diag:'Inputs', dCtrl:'controller', dHeld:'held', dIdle:'idle', dHand:'hand', dHidden:'hidden', handsLbl:'Hands in AR:', hOff:'Hidden', hTips:'Fingertips', hSkel:'Skeleton', guideDesk:'The guide runs in AR, on the headset.', guideTitle:'Guide', skipGuide:'Skip guide', skipStep:'Skip step', close:'Close', bravo:'✓ Well done!',
   }
 };
 const t = (k, o) => { let s = (TXT[LANG][k] ?? k); if (o) for (const q in o) s = s.replace('{' + q + '}', o[q]); return s; };
@@ -359,8 +359,8 @@ const reps = new THREE.Group(); inner.add(reps);
 const overlay = new THREE.Group(); inner.add(overlay);       // labels, measurements, selection
 
 /* ============================== state ============================== */
-let HANDS0 = 'tips'; try { HANDS0 = localStorage.getItem('biomol-hands') || 'tips'; } catch (e) {}
-const S = { hands: HANDS0, mode:'cartoon', color:'chain', water:false, hyd:false, lig:true, side:false, tool:'grab', spin:false, userZoom:1 };
+let HANDS0 = 'tips', DOM0 = 'right'; try { HANDS0 = localStorage.getItem('biomol-hands') || 'tips'; DOM0 = localStorage.getItem('biomol-dom') || 'right'; } catch (e) {}
+const S = { hands: HANDS0, dom: DOM0, mode:'cartoon', color:'chain', water:false, hyd:false, lig:true, side:false, tool:'grab', spin:false, userZoom:1 };
 let mol = null, molInfo = null;
 const hiddenChains = new Set();
 let lessonView = null;         // {chains, hl:Set(res), dim, labels}
@@ -480,6 +480,7 @@ function rebuild() {
   }
   if (S.mode === 'cartoon') buildCartoon();
   buildPickables();
+  const ms = molState; molState = ''; setMolState(ms || 'idle');
   rebuildOverlay(); drawPanel(); groupChanged();
 }
 let pickables = null;
@@ -917,7 +918,11 @@ function drawToolsTab(y) {
   g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = FONT('600', 26); g.fillStyle = C.dim; g.fillText(t('handsLbl'), 46, y + 31);
   const bw3 = (PW - 80 - 230 - 2 * 10) / 3;
   [['off', t('hOff')], ['tips', t('hTips')], ['skeleton', t('hSkel')]].forEach(([id, lb], k) => button('h_' + id, 270 + k * (bw3 + 10), y, bw3, 62, lb, () => { S.hands = id; try { localStorage.setItem('biomol-hands', id); } catch (e) {} drawPanel(); }, { on: S.hands === id, fs: 26 }));
-  y += 104;
+  y += 76;
+  g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = FONT('600', 26); g.fillStyle = C.dim; g.fillText(t('domLbl'), 46, y + 31);
+  const bw2 = (PW - 80 - 230 - 10) / 2;
+  [['right', t('dRight')], ['left', t('dLeft')]].forEach(([id, lb], k) => button('dom_' + id, 270 + k * (bw2 + 10), y, bw2, 62, lb, () => { S.dom = id; try { localStorage.setItem('biomol-dom', id); } catch (e) {} drawPanel(); }, { on: S.dom === id, fs: 26 }));
+  y += 100;
   g.textAlign = 'left'; g.textBaseline = 'alphabetic';
   const lines = [];
   if (selAtom !== null && mol) lines.push(...atomDescription(selAtom).map(s => ['#eaf7ff', s]));
@@ -926,8 +931,9 @@ function drawToolsTab(y) {
   let yy = y;
   for (const [c, s] of lines) for (const l of wrap(s, PW - 100, FONT('500', 30))) { g.font = FONT('500', 30); g.fillStyle = c; g.fillText(l, 48, yy); yy += 40; }
   if (measures.length) { yy += 16; section(t('measures'), yy); yy += 46;
-    for (const m of measures.slice(-3)) { g.font = FONT('700', 30); g.fillStyle = '#ffe14a'; g.fillText(m.text, 48, yy); const s = fitFont(m.names, PW - 260, 24, '500'); g.fillStyle = C.dim; g.fillText(m.names, 210, yy); yy += 42; } }
-  const hy = PH - 250; for (const [k, l] of wrap(t('help'), PW - 100, FONT('500', 24)).entries()) { g.font = FONT('500', 24); g.fillStyle = C.dim; g.fillText(l, 48, hy + k * 32); }
+    for (const m of measures.slice(-3)) { if (yy > PH - 345) break; g.font = FONT('700', 30); g.fillStyle = '#ffe14a'; g.fillText(m.text, 48, yy); const s = fitFont(m.names, PW - 260, 24, '500'); g.fillStyle = C.dim; g.fillText(m.names, 210, yy); yy += 42; } }
+  const hy = PH - 300; for (const [k, l] of wrap(t('help'), PW - 100, FONT('500', 23)).entries()) { g.font = FONT('500', 23); g.fillStyle = C.dim; g.fillText(l, 48, hy + k * 30); }
+  if (renderer.xr.isPresenting) { g.font = FONT('500', 21); g.fillStyle = '#6f8fa5'; g.fillText(t('diag') + ': ' + (diagText || '–'), 48, PH - 136); }
 }
 function drawLearnTab(y) {
   if (!lesson) {
@@ -1050,7 +1056,7 @@ for (let k = 0; k < 4; k++) {
   c.addEventListener('disconnected', () => { c.userData.src = null; release(c); dot.visible = false; line.visible = false; c.userData.fo = null; c.userData.hoverAtom = null; });
   c.addEventListener('selectstart', () => onSelect(c));
   c.addEventListener('selectend', () => { release(c); endPanelDrag(c); });
-  c.addEventListener('squeezestart', () => { if (ignoredHand(c)) return; setRayPast(c); const h = panelOrHandleHit(); if (h) startPanelDrag(c, h); else startGrab(c); });
+  c.addEventListener('squeezestart', () => { if (ignoredHand(c) || !rayHand(c)) return; setRayPast(c); const h = panelOrHandleHit(); if (h) startPanelDrag(c, h); else startGrab(c); });
   c.addEventListener('squeezeend', () => { release(c); endPanelDrag(c); });
   scene.add(c); ctrls.push(c);
 }
@@ -1096,15 +1102,39 @@ function updatePanelDrag(dt) {
   panelMesh.position.lerp(p, 0.6);
   const cam = renderer.xr.getCamera(); cam.getWorldPosition(lastHead); panelMesh.lookAt(lastHead);
 }
-function molSphereHit() {
-  if (!mol) return false; const c = new THREE.Vector3(); molRoot.getWorldPosition(c); const r = mol.radius * scaler.scale.x * 0.95;
-  return raycaster.ray.distanceSqToPoint(c) < r * r;
+function grabRadius() { return Math.max(0.05, mol.radius * scaler.scale.x * 0.95); }
+const _gs = new THREE.Sphere();
+function molSphereHit(out) {
+  if (!mol) return false; molRoot.getWorldPosition(_gs.center); _gs.radius = grabRadius();
+  if (out) return raycaster.ray.intersectSphere(_gs, out) !== null;
+  return raycaster.ray.distanceSqToPoint(_gs.center) < _gs.radius * _gs.radius;
+}
+// visual state of the molecule: idle / hover (ray or hand can grab it now) / grabbed
+const halo = new THREE.Mesh(new THREE.RingGeometry(0.965, 1.0, 96), new THREE.MeshBasicMaterial({ color: 0x2fd4ff, transparent: true, opacity: 0, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+const haloFill = new THREE.Mesh(new THREE.CircleGeometry(0.965, 96), new THREE.MeshBasicMaterial({ color: 0x2fd4ff, transparent: true, opacity: 0, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+halo.renderOrder = 15; haloFill.renderOrder = 15; halo.add(haloFill); halo.visible = false; scene.add(halo);
+let molState = 'idle', molHoverNow = false;
+const EMI = { idle: 0x000000, hover: 0x0d2a36, grab: 0x123d18 };
+function setMolState(st) {
+  if (st === molState) return; molState = st;
+  for (const o of reps.children) if (o.material && o.material.emissive) o.material.emissive.setHex(EMI[st]);
+  cartoonMat.emissive.setHex(EMI[st]);
+}
+function updateHalo() {
+  const st = grabs.length ? 'grab' : (molHoverNow ? 'hover' : 'idle'); setMolState(st);
+  if (!mol || st === 'idle' || !renderer.xr.isPresenting) { halo.visible = false; return; }
+  halo.visible = true; molRoot.getWorldPosition(halo.position); halo.scale.setScalar(grabRadius());
+  renderer.xr.getCamera().getWorldPosition(_cw); halo.lookAt(_cw);
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 160);
+  halo.material.color.setHex(st === 'grab' ? 0x7dff6a : 0x2fd4ff); haloFill.material.color.setHex(st === 'grab' ? 0x7dff6a : 0x2fd4ff);
+  halo.material.opacity = st === 'grab' ? 0.95 : 0.55 + 0.3 * pulse; haloFill.material.opacity = st === 'grab' ? 0.07 : 0.04;
 }
 function buzz(c) { try { c.userData.src?.gamepad?.hapticActuators?.[0]?.pulse(0.35, 25); } catch (e) {} }
 function onSelect(c) {
   if (ignoredHand(c)) return;
   // hands: pinching inside the molecule grabs it directly (no ray needed)
   if (c.userData.src && c.userData.src.hand && mol && pinchInsideMolecule(c)) { startGrab(c); return; }
+  if (!rayHand(c)) return;
   setRayPast(c);
   const gh = guideHit(); if (gh) { guidePress(gh.uv.x * GW, (1 - gh.uv.y) * GH); buzz(c); return; }
   const hh = handleHit(); if (hh) { startPanelDrag(c, hh); return; }
@@ -1121,6 +1151,8 @@ let ctrlPresent = false;
 function controllerPresent() { const ses = renderer.xr.getSession(); if (!ses) return false; for (const src of ses.inputSources) if (!src.hand && src.gamepad && src.targetRayMode === 'tracked-pointer') return true; return false; }
 const busyHand = [false, false, false, false];
 function ignoredHand(c) { return !!(c.userData.src && c.userData.src.hand && busyHand[c.userData.k]); }
+// only the dominant hand gets a laser; the other hand works by touch (poke) and direct pinch-grab
+function rayHand(c) { const src = c.userData.src; if (!src || !src.hand) return true; return src.handedness === 'none' || !src.handedness || src.handedness === S.dom; }
 const _palm = new THREE.Vector3(), _cp = new THREE.Vector3();
 // a hand counts as "holding the controller" only if its palm is right next to the controller;
 // the other hand stays free for gestures, and if the controller is put down both hands work.
@@ -1138,11 +1170,13 @@ function updateBusyHands() {
     if (u.refPos.distanceToSquared(_cp) > 0.0025 * 0.0025 || u.refQ.angleTo(_cq) > 0.012) { u.refPos.copy(_cp); u.refQ.copy(_cq); u.lastMove = now; }
     const gp = src.gamepad; for (const b of gp.buttons) if (b.pressed || b.touched) { u.lastMove = now; break; }
     if (gp.axes) for (const a of gp.axes) if (Math.abs(a) > 0.1) { u.lastMove = now; break; }
+    u.held = false;
     if (now - u.lastMove > 3000) continue; // put down: both hands are free
-    let best = null, bd = 0.4;
-    for (const h of hands) {
+    u.held = true;
+    const want = (src.handedness === 'left' || src.handedness === 'right') ? src.handedness : S.dom;
+    let best = hands.find(h => h.active && h.handed === want) || null, bd = 0.45;
+    if (!best) for (const h of hands) { // headsets that don't report handedness: nearest palm
       if (!h.active) continue; const J = h.hand.joints; const pj = J && (J['middle-finger-metacarpal'] || J['wrist']); if (!pj || !pj.visible) continue;
-      if (src.handedness && src.handedness !== 'none' && h.handed === src.handedness) { best = h; break; }
       pj.getWorldPosition(_palm); const d = _palm.distanceTo(_cp); if (d < bd) { bd = d; best = h; }
     }
     if (best) busyHand[best.k] = true;
@@ -1193,7 +1227,7 @@ const jp = new THREE.Vector3(), cJ = new THREE.Color(), tipLocal = new THREE.Vec
 function updateHands() {
   for (const h of hands) {
     if (busyHand[h.k]) { h.vis.visible = false; h.poked = h.pokedG = false; if (grabs.includes(h.ctrl)) release(h.ctrl); continue; }
-    const J = h.hand.joints; if (!h.active || !J || !J['wrist'] || !J['index-finger-tip'] || !J['index-finger-tip'].visible) { h.vis.visible = false; if (h.ctrl) h.ctrl.userData.line.visible = true; continue; }
+    const J = h.hand.joints; if (!h.active || !J || !J['wrist'] || !J['index-finger-tip'] || !J['index-finger-tip'].visible) { h.vis.visible = false; if (h.ctrl && rayHand(h.ctrl)) h.ctrl.userData.line.visible = true; continue; }
     h.vis.visible = S.hands !== 'off';
     J['index-finger-tip'].getWorldPosition(tipW); J['thumb-tip'].getWorldPosition(thumbW);
     const pinch = THREE.MathUtils.clamp(1 - (tipW.distanceTo(thumbW) - 0.015) / 0.04, 0, 1);
@@ -1210,6 +1244,7 @@ function updateHands() {
     });
     if (skel) for (let i = 0; i < BONES.length; i++) { const A = P[BONES[i][0]], B = P[BONES[i][1]], o = i * 6; pos[o] = A.x; pos[o + 1] = A.y; pos[o + 2] = A.z; pos[o + 3] = B.x; pos[o + 4] = B.y; pos[o + 5] = B.z; }
     h.jm.instanceMatrix.needsUpdate = true; if (h.jm.instanceColor) h.jm.instanceColor.needsUpdate = true; if (skel) h.bones.geometry.attributes.position.needsUpdate = true;
+    if (mol && !busyHand[h.k] && !grabs.length) { _mc.addVectors(tipW, thumbW).multiplyScalar(0.5); molRoot.getWorldPosition(_hp); if (_mc.distanceTo(_hp) < grabRadius() * 1.05) molHoverNow = true; }
     // fingertip glow + direct touch on the menu
     h.tipGlow.position.copy(tipW); h.tipGlow.scale.setScalar(1 + pinch * 0.8);
     if (guideMesh.visible) {
@@ -1227,7 +1262,7 @@ function updateHands() {
       if (inside && tipLocal.z < 0.008 && tipLocal.z > -0.03 && !h.poked) { h.poked = true; panelPress(x, y); }
       if (!inside || tipLocal.z > 0.025) h.poked = false;
       // hide the ray while the finger is close to the menu (direct-touch mode)
-      if (h.ctrl) h.ctrl.userData.line.visible = !(inside && tipLocal.z < 0.12);
+      if (h.ctrl) h.ctrl.userData.line.visible = rayHand(h.ctrl) && !(inside && tipLocal.z < 0.12);
     }
   }
 }
@@ -1489,6 +1524,18 @@ function updateGuide(dt) {
 /* ============================== loop ============================== */
 const clock = new THREE.Clock();
 const tmpScale = new THREE.Vector3(), prevMolPos = new THREE.Vector3(), _hp = new THREE.Vector3();
+let diagText = '', diagAt = 0;
+function updateDiag(xr) {
+  if (!xr) return; const now = performance.now(); if (now - diagAt < 1000) return; diagAt = now;
+  const ses = renderer.xr.getSession(); if (!ses) return; const parts = [];
+  for (const src of ses.inputSources) {
+    const side = src.handedness === 'left' ? 'L' : src.handedness === 'right' ? 'R' : '?';
+    if (src.hand) { const h = hands.find(q => q.active && q.hand && renderer.xr.getHand(q.k) && q.handed === src.handedness); parts.push(`${t('dHand')} ${side}` + (h && busyHand[h.k] ? ` (${t('dHidden')})` : '')); }
+    else if (src.gamepad) { const c = ctrls.find(q => q.userData.src === src); parts.push(`${t('dCtrl')} ${side} (${c && c.userData.held ? t('dHeld') : t('dIdle')})`); }
+    else parts.push(src.targetRayMode);
+  }
+  const txt = parts.join(' · '); if (txt !== diagText) { diagText = txt; if (UI.tab === 'tools') drawPanel(); }
+}
 let frameNo = 0, xrHoverAtom = null, molVersion = 0; const _lastMolM = new THREE.Matrix4();
 // touchpad: dead zone + quadratic response = fine control for small movements, fast for big ones
 const padCurve = (v) => { const a = Math.abs(v || 0); if (a < 0.18) return 0; const n = (a - 0.18) / 0.82; return Math.sign(v) * n * n; };
@@ -1500,14 +1547,14 @@ renderer.setAnimationLoop(() => {
   pivot.lerp(pivotTarget, 1 - Math.pow(0.002, dt)); inner.position.copy(pivot).negate();
   const zl = xr ? 1 + (zoomLesson - 1) * 0.55 : zoomLesson; const targetS = fitScale * zl * S.userZoom; const cs = scaler.scale.x; scaler.scale.setScalar(cs + (targetS - cs) * (1 - Math.pow(0.001, dt)));
   if (S.spin && !grabs.length) molRoot.rotateOnWorldAxis(UP, dt * 0.35);
-  frameNo++;
+  frameNo++; molHoverNow = false;
   inner.updateMatrixWorld(); if (!_lastMolM.equals(inner.matrixWorld)) { _lastMolM.copy(inner.matrixWorld); molVersion++; }
   if (xr) {
     ctrlPresent = controllerPresent(); updateBusyHands(); xrHoverAtom = null;
     for (const c of ctrls) {
       if (!c.userData.src) continue;
       updateRayFilter(c, dt);
-      if (ignoredHand(c)) { c.userData.line.visible = false; c.userData.dot.visible = false; c.userData.hoverAtom = null; continue; }
+      if (ignoredHand(c) || !rayHand(c)) { c.userData.line.visible = false; c.userData.dot.visible = false; c.userData.hoverAtom = null; continue; }
       setRay(c);
       const L = c.userData.line; L.position.copy(c.userData.o); L.quaternion.setFromUnitVectors(NEG_Z, c.userData.d);
       if (!c.userData.src.hand) L.visible = c.userData.src.targetRayMode !== 'screen';
@@ -1522,10 +1569,15 @@ renderer.setAnimationLoop(() => {
       if (ha !== (c.userData.hoverAtom ?? null) && ha !== null && S.tool !== 'grab') tick(c);
       c.userData.hoverAtom = ha; if (c.userData.cur) c.userData.cur.a = ha;
       if (ha !== null && xrHoverAtom === null) xrHoverAtom = ha;
-      let len = 2;
-      if (ph) len = ph.distance; else if (ha !== null) { const a = mol.atoms[ha]; _hp.set(a.x, a.y, a.z); inner.localToWorld(_hp); len = _hp.distanceTo(c.userData.o); }
+      let len = 2; let onMol = false;
+      if (!ph && mol && !panelDrag && (S.tool === 'grab' || grabs.includes(c))) { onMol = grabs.includes(c) || molSphereHit(_hp); if (onMol && !grabs.includes(c)) { molHoverNow = true; if (!u.wasOnMol) tick(c); } }
+      u.wasOnMol = onMol;
+      if (ph) len = ph.distance;
+      else if (ha !== null) { const a = mol.atoms[ha]; _hp.set(a.x, a.y, a.z); inner.localToWorld(_hp); len = _hp.distanceTo(c.userData.o); }
+      else if (onMol && !grabs.includes(c)) len = Math.max(0.02, _hp.distanceTo(c.userData.o));
       c.userData.line.scale.z = len;
-      c.userData.dot.visible = !!ph || (ha !== null && S.tool !== 'grab'); if (ph) c.userData.dot.position.copy(ph.point); else if (ha !== null) c.userData.dot.position.copy(_hp);
+      c.userData.line.material.color.setHex(grabs.includes(c) ? 0x7dff6a : onMol ? 0x9dffb0 : 0x9ff0ff);
+      c.userData.dot.visible = !!ph || (ha !== null && S.tool !== 'grab') || (onMol && !grabs.includes(c)); if (ph) c.userData.dot.position.copy(ph.point); else if (ha !== null || onMol) c.userData.dot.position.copy(_hp);
       if (ph && ph.object === panelMesh && !gh) { const id = xrHover(ph.uv.x * PW, (1 - ph.uv.y) * PH); if (id !== c.userData.lastBtn && id) tick(c); c.userData.lastBtn = id; hoverOwner = c; } else { c.userData.lastBtn = null; if (hoverOwner === c) { hoverQuad.visible = false; hoverOwner = null; } }
       const gp = c.userData.src.gamepad;
       if (gp && gp.axes && !(panelDrag && panelDrag.c === c)) {
@@ -1559,6 +1611,7 @@ renderer.setAnimationLoop(() => {
   } else controls.update();
   // label sizing (constant size in meters)
   const sw = scaler.scale.x; const H = xr ? 0.016 : 0.02;
+  updateHalo(); updateDiag(xr);
   showHover(xr ? xrHoverAtom : deskHover);
   groupTick(dt, xr);
   for (const arr of LABEL_ARRS) for (const sp of arr) { sp.scale.set(H * sp.userData.aspect / sw, H / sw, 1); sp.center.set(0.5, -((sp.userData.lift || 1) * 0.25)); }
