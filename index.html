@@ -3735,7 +3735,7 @@ const TXT = {
     clearM:'Șterge măsurătorile', infoNone:'Alege „Info atom” și atinge un atom.', pickMore:'Atinge încă {n} atom(i).',
     measures:'Măsurători', lessonsIntro:'Lecții ghidate pas cu pas. Molecula se încarcă singură.',
     step:'Pasul {i} din {n}', prev:'◀ Înapoi', next:'Înainte ▶', exit:'Ieșire', done:'Gata ✓',
-    reset:'Resetează', recenter:'Adu aici', spin:'Rotire', ready:'Gata',
+    reset:'Resetează', recenter:'Adu aici', spin:'Rotire',
     xrAR:'Intră în AR', xrVR:'Intră în VR', xrNo:'AR disponibil pe Magic Leap 2 (WebXR)',
     hint:'Mouse: stânga = rotește, dreapta = mută, rotiță = zoom. Click pe un atom (fără să tragi) = folosește unealta aleasă.',
     help:'🎮 Trăgaci pe moleculă = o apuci (mișcă sau rotește mâna). Touchpad: sus/jos = mărire, stânga/dreapta = rotire. Trăgaci pe buton = apeși. Bara de sub meniu = muți meniul. „Adu aici” = molecula și meniul vin în fața ta.\n✋ Atingi butoanele cu arătătorul; pinch în moleculă = o apuci; pinch cu ambele mâini = rotești și mărești.',
@@ -3763,7 +3763,7 @@ const TXT = {
     clearM:'Clear measurements', infoNone:'Choose “Atom info” and tap an atom.', pickMore:'Tap {n} more atom(s).',
     measures:'Measurements', lessonsIntro:'Step-by-step guided lessons. The molecule loads automatically.',
     step:'Step {i} of {n}', prev:'◀ Back', next:'Next ▶', exit:'Exit', done:'Done ✓',
-    reset:'Reset', recenter:'Bring here', spin:'Spin', ready:'Ready',
+    reset:'Reset', recenter:'Bring here', spin:'Spin',
     xrAR:'Enter AR', xrVR:'Enter VR', xrNo:'AR available on Magic Leap 2 (WebXR)',
     hint:'Mouse: left = rotate, right = pan, wheel = zoom. Click an atom (without dragging) = use the selected tool.',
     help:'🎮 Trigger on the molecule = grab it (move or turn your hand). Touchpad: up/down = zoom, left/right = rotate. Trigger on a button = press. Bar below the menu = move the menu. “Bring here” = molecule and menu come in front of you.\n✋ Touch buttons with your index finger; pinch inside the molecule = grab it; pinch with both hands = rotate and zoom.',
@@ -4272,7 +4272,7 @@ function tubeFor(rs, isProt) {
   const idx = [];
   for (let i = 0; i < rings.length - 1; i++) for (let j = 0; j < RING; j++) { const a = i * RING + j, b = i * RING + (j + 1) % RING, c2 = a + RING, d = b + RING; idx.push(a, c2, b, b, c2, d); }
   // caps
-  const capS = rings.length * RING; const geoPos = Array.from(pos), geoCol = Array.from(col); const resArr = Array.from(resIdx);
+  const geoPos = Array.from(pos), geoCol = Array.from(col); const resArr = Array.from(resIdx);
   for (const [ri, flip] of [[0, true], [rings.length - 1, false]]) {
     const cIdx = geoPos.length / 3; const p = rings[ri].p; geoPos.push(p.x, p.y, p.z); geoCol.push(col[ri * RING * 3], col[ri * RING * 3 + 1], col[ri * RING * 3 + 2]); resArr.push(rings[ri].res.i);
     for (let j = 0; j < RING; j++) { const a = ri * RING + j, b = ri * RING + (j + 1) % RING; if (flip) idx.push(cIdx, b, a); else idx.push(cIdx, a, b); }
@@ -5278,7 +5278,6 @@ renderer.setAnimationLoop(() => {
 });
 
 updateDom(); drawPanel(); resetView();
-window.__biomol = { group: () => ({ role: G.role, room: G.room, status: G.status, students: G.students.size, follow: G.follow }), guide: () => ({ on: guide.on, i: guide.i }), mol: () => ({ q: molRoot.quaternion.toArray().map(v => +v.toFixed(3)), p: molRoot.position.toArray().map(v => +v.toFixed(3)), z: +S.userZoom.toFixed(3), grabs: grabs.length, pts: grabs.map(c => [c.userData.k, !!(c.userData.src && c.userData.src.hand), !!handOf(c), grabPoint(c, new THREE.Vector3()).toArray().map(v => +v.toFixed(3))]), v0: two.v0.toArray().map(v => +v.toFixed(3)) }), pointer: () => [G.pointer, markGroup.visible, G.lastPose] };
 // start with something to look at
 Promise.resolve(loadPDB('1HVR')).catch(e => console.warn(e)).finally(() => requestAnimationFrame(() => requestAnimationFrame(() => {
   const b = document.getElementById('boot'); if (!b) return; b.style.opacity = '0'; setTimeout(() => b.remove(), 450);
