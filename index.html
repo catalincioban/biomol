@@ -46,7 +46,7 @@ const TXT = {
     reset:'Resetează', recenter:'Adu aici', spin:'Rotire', ready:'Gata',
     xrAR:'Intră în AR', xrVR:'Intră în VR', xrNo:'AR disponibil pe Magic Leap 2 (WebXR)',
     hint:'Mouse: stânga = rotește, dreapta = mută, rotiță = zoom. Click pe un atom (fără să tragi) = folosește unealta aleasă.',
-    help:'Bumper: ține apăsat ca să apuci molecula (sau meniul, dacă țintești spre el); ținut 1 s fără să miști controller-ul = aduci scena în fața ta. Touchpad: sus/jos = mărire, stânga/dreapta = rotire. Mâinile: apasă butoanele cu degetul; pinch în moleculă = o apuci și o rotești din încheietură; cu ambele mâini (sau controller + mâna liberă) o rotești, o muți și o mărești.',
+    help:'Bumper: ține apăsat ca să apuci molecula (sau meniul ori ghidul, dacă țintești spre ele); ținut 1 s fără să miști controller-ul = aduci scena în fața ta. Touchpad: sus/jos = mărire, stânga/dreapta = rotire. Mâinile: apasă butoanele cu degetul; pinch în moleculă = o apuci și o rotești din încheietură; cu ambele mâini (sau controller + mâna liberă) o rotești, o muți și o mărești.',
     chain:'lanț', atom:'atom', protein:'proteină', nucleic:'acid nucleic', ligand:'ligand', ion:'ion', water:'apă',
     hydrophobic:'hidrofob', polar:'polar', basic:'bazic (+)', acidic:'acid (−)',
     atoms:'atomi', residues:'resturi', chains:'lanțuri', offline:'(merge și fără internet)',
@@ -58,7 +58,7 @@ const TXT = {
     grpEnd:'Încheie sesiunea', grpLock:'🔒 Blochează meniul studenților', grpLocked:'🔒 Meniul studenților e blocat (apasă ca să deblochezi)', lockedBar:'🔒 Meniu blocat de profesor', grpRoom:'Introdu codul primit de la profesor', join:'Intră', grpSession:'Sesiunea {c}',
     grpTeacherOn:'Profesorul este conectat', grpTeacherOff:'Se așteaptă profesorul…', grpFollow:'Urmăresc profesorul', grpLeave:'Ieși din sesiune',
     grpFollowInfo:'Când urmărești profesorul, molecula ta se schimbă odată cu a lui. Oprește urmărirea ca să explorezi singur.', teacher:'Profesor', grpBadCode:'Cod invalid',
-    guideBtn:'Ghid de utilizare', menu:'Meniu', minimize:'Minimizează', dotsLbl:'Puncte pe arătătoare:', yes:'Da', no:'Nu', recentered:'Scena a venit la tine', guideDesk:'Ghidul pornește în AR, pe căști.', guideTitle:'Ghid', skipGuide:'Sari peste ghid', skipStep:'Sari pasul', close:'Închide', bravo:'✓ Bravo!',
+    guideBtn:'Ghid de utilizare', btnDiag:'Butoane controller (apăsate acum)', menu:'Meniu', minimize:'Minimizează', dotsLbl:'Puncte pe arătătoare:', yes:'Da', no:'Nu', recentered:'Scena a venit la tine', guideDesk:'Ghidul pornește în AR, pe căști.', guideTitle:'Ghid', skipGuide:'Sari peste ghid', skipStep:'Sari pasul', close:'Închide', bravo:'✓ Bravo!',
   },
   en: {
     tabMol:'Molecules', tabView:'Display', tabTools:'Tools', tabLearn:'Lessons',
@@ -86,7 +86,7 @@ const TXT = {
     grpEnd:'End session', grpLock:'🔒 Lock the students’ menu', grpLocked:'🔒 Students’ menu is locked (tap to unlock)', lockedBar:'🔒 Menu locked by the teacher', grpRoom:'Enter the code from your teacher', join:'Join', grpSession:'Session {c}',
     grpTeacherOn:'Teacher is connected', grpTeacherOff:'Waiting for the teacher…', grpFollow:'Follow the teacher', grpLeave:'Leave session',
     grpFollowInfo:'While following, your molecule changes with the teacher’s. Turn following off to explore on your own.', teacher:'Teacher', grpBadCode:'Invalid code',
-    guideBtn:'User guide', menu:'Menu', minimize:'Minimize', dotsLbl:'Index fingertip dots:', yes:'Yes', no:'No', recentered:'The scene came to you', guideDesk:'The guide runs in AR, on the headset.', guideTitle:'Guide', skipGuide:'Skip guide', skipStep:'Skip step', close:'Close', bravo:'✓ Well done!',
+    guideBtn:'User guide', btnDiag:'Controller buttons (pressed now)', menu:'Menu', minimize:'Minimize', dotsLbl:'Index fingertip dots:', yes:'Yes', no:'No', recentered:'The scene came to you', guideDesk:'The guide runs in AR, on the headset.', guideTitle:'Guide', skipGuide:'Skip guide', skipStep:'Skip step', close:'Close', bravo:'✓ Well done!',
   }
 };
 const t = (k, o) => { let s = (TXT[LANG][k] ?? k); if (o) for (const q in o) s = s.replace('{' + q + '}', o[q]); return s; };
@@ -949,8 +949,9 @@ function drawToolsTab(y) {
   let yy = y;
   for (const [c, s] of lines) for (const l of wrap(s, PW - 100, FONT('500', 30))) { g.font = FONT('500', 30); g.fillStyle = c; g.fillText(l, 48, yy); yy += 40; }
   if (measures.length) { yy += 16; section(t('measures'), yy); yy += 46;
-    for (const m of measures.slice(-3)) { g.font = FONT('700', 30); g.fillStyle = '#ffe14a'; g.fillText(m.text, 48, yy); const s = fitFont(m.names, PW - 260, 24, '500'); g.fillStyle = C.dim; g.fillText(m.names, 210, yy); yy += 42; } }
-  const hy = PH - 250; for (const [k, l] of wrap(t('help'), PW - 100, FONT('500', 24)).entries()) { g.font = FONT('500', 24); g.fillStyle = C.dim; g.fillText(l, 48, hy + k * 32); }
+    for (const m of measures.slice(-3)) { if (yy > PH - 360) break; g.font = FONT('700', 30); g.fillStyle = '#ffe14a'; g.fillText(m.text, 48, yy); const s = fitFont(m.names, PW - 260, 24, '500'); g.fillStyle = C.dim; g.fillText(m.names, 210, yy); yy += 42; } }
+  const hy = PH - 318; for (const [k, l] of wrap(t('help'), PW - 100, FONT('500', 23)).entries()) { g.font = FONT('500', 23); g.fillStyle = C.dim; g.fillText(l, 48, hy + k * 29); }
+  if (renderer.xr.isPresenting) { g.font = FONT('500', 21); g.fillStyle = '#6f8fa5'; g.fillText(t('btnDiag') + ': ' + (btnDiag || '–'), 48, PH - 140); }
 }
 function drawLearnTab(y) {
   if (!lesson) {
@@ -1073,8 +1074,8 @@ for (let k = 0; k < 4; k++) {
   c.addEventListener('disconnected', () => { c.userData.src = null; release(c); dot.visible = false; line.visible = false; c.userData.fo = null; c.userData.hoverAtom = null; });
   c.addEventListener('selectstart', () => onSelect(c));
   c.addEventListener('selectend', () => { release(c); endPanelDrag(c); });
-  c.addEventListener('squeezestart', () => { if (ignoredHand(c)) return; setRayPast(c); const h = panelOrHandleHit(); if (h) startPanelDrag(c, h); else { const onM = molSphereHit(); startGrab(c); if (!onM && !(c.userData.src && c.userData.src.hand)) c.userData.rc = { t: performance.now(), p: new THREE.Vector3().setFromMatrixPosition(c.matrixWorld) }; } });
-  c.addEventListener('squeezeend', () => { release(c); endPanelDrag(c); c.userData.rc = null; });
+  c.addEventListener('squeezestart', () => onSqueezeStart(c, false));
+  c.addEventListener('squeezeend', () => onSqueezeEnd(c));
   scene.add(c); ctrls.push(c);
 }
 // One Euro filter: strong smoothing when the hand is still (tremor), almost none during fast moves (no lag)
@@ -1108,16 +1109,36 @@ function panelHit() { if (!panelMesh.visible) return null; const h = raycaster.i
 function handleHit() { if (!panelMesh.visible) return null; return raycaster.intersectObject(handleMesh, false)[0] || null; }
 function panelOrHandleHit() { return handleHit() || panelHit() || miniHit(); }
 let panelDrag = null; // {c, dist, off}
-function startPanelDrag(c, hit) {
-  panelDrag = { c, dist: hit.distance, off: panelMesh.position.clone().sub(hit.point) }; drawHandle(true); buzz(c);
+function onSqueezeStart(c, byPoll) {
+  if (c.userData.squeezing) return; c.userData.squeezing = true; c.userData.sqPoll = byPoll;
+  if (ignoredHand(c)) return; setRayPast(c);
+  const gh = guideHit(); if (gh) { startPanelDrag(c, gh, guideMesh); return; }
+  const h = panelOrHandleHit(); if (h) { startPanelDrag(c, h); return; }
+  const onM = molSphereHit(); startGrab(c);
+  if (!onM && !(c.userData.src && c.userData.src.hand)) c.userData.rc = { t: performance.now(), p: new THREE.Vector3().setFromMatrixPosition(c.matrixWorld) };
 }
-function endPanelDrag(c) { if (panelDrag && panelDrag.c === c) { panelDrag = null; drawHandle(false); guideStats.dragged = true; } }
+function onSqueezeEnd(c) { c.userData.squeezing = false; c.userData.sqPoll = false; release(c); endPanelDrag(c); c.userData.rc = null; }
+// Some browsers don't send 'squeeze' events for the bumper: read the button directly as a fallback
+let btnDiag = '';
+function pollBumper(c) {
+  const src = c.userData.src; if (!src || src.hand || !src.gamepad) return; const gp = src.gamepad;
+  const pressedIdx = []; gp.buttons.forEach((b, i) => { if (b && b.pressed) pressedIdx.push(i); });
+  const d = (gp.mapping || 'fără mapare') + ' · ' + (pressedIdx.length ? pressedIdx.join(',') : '–'); if (d !== c.userData.btnDiag) { c.userData.btnDiag = d; btnDiag = d; if (UI.tab === 'tools' && renderer.xr.isPresenting) drawPanel(); }
+  const idxs = gp.mapping === 'xr-standard' ? [1] : [1, 3, 4, 5];
+  const down = idxs.some(i => gp.buttons[i] && gp.buttons[i].pressed);
+  if (down && !c.userData.squeezing) onSqueezeStart(c, true);
+  else if (!down && c.userData.squeezing && c.userData.sqPoll) onSqueezeEnd(c);
+}
+function startPanelDrag(c, hit, obj = panelMesh) {
+  panelDrag = { c, obj, dist: hit.distance, off: obj.position.clone().sub(hit.point) }; if (obj === panelMesh) drawHandle(true); else guide.pinned = true; buzz(c);
+}
+function endPanelDrag(c) { if (panelDrag && panelDrag.c === c) { const wasPanel = panelDrag.obj === panelMesh; panelDrag = null; drawHandle(false); if (wasPanel) guideStats.dragged = true; } }
 function updatePanelDrag(dt) {
   const c = panelDrag.c; setRay(c);
   const gp = c.userData.src && c.userData.src.gamepad; if (gp && gp.axes) { const ay = Math.abs(gp.axes[3] || 0) > Math.abs(gp.axes[1] || 0) ? gp.axes[3] : gp.axes[1]; if (Math.abs(ay) > 0.35) panelDrag.dist = THREE.MathUtils.clamp(panelDrag.dist - ay * dt * 0.8, 0.2, 2.5); }
   const p = raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, panelDrag.dist).add(panelDrag.off);
-  panelMesh.position.lerp(p, 0.6);
-  const cam = renderer.xr.getCamera(); cam.getWorldPosition(lastHead); panelMesh.lookAt(lastHead);
+  const ob = panelDrag.obj || panelMesh; ob.position.lerp(p, 0.6);
+  const cam = renderer.xr.getCamera(); cam.getWorldPosition(lastHead); ob.lookAt(lastHead);
 }
 function molSphereHit() {
   if (!mol) return false; const c = new THREE.Vector3(); molRoot.getWorldPosition(c); const r = mol.radius * scaler.scale.x * 0.95;
@@ -1146,7 +1167,7 @@ function onSelect(c) {
   // hands: pinching inside the molecule grabs it directly (no ray needed)
   if (c.userData.src && c.userData.src.hand && mol && pinchInsideMolecule(c)) { startGrab(c); return; }
   setRayPast(c);
-  const gh = guideHit(); if (gh) { guidePress(gh.uv.x * GW, (1 - gh.uv.y) * GH); buzz(c); return; }
+  const gh = guideHit(); if (gh) { const gy = (1 - gh.uv.y) * GH; if (guidePress(gh.uv.x * GW, gy)) buzz(c); else startPanelDrag(c, gh, guideMesh); return; }
   const mh = miniHit(); if (mh) { setMinimized(false); buzz(c); return; }
   const hh = handleHit(); if (hh) { startPanelDrag(c, hh); return; }
   const ph = panelHit();
@@ -1467,7 +1488,7 @@ guideMesh.visible = false; guideMesh.renderOrder = 22; scene.add(guideMesh);
 let guideBtns = [];
 function guideHit() { if (!guideMesh.visible) return null; return raycaster.intersectObject(guideMesh, false)[0] || null; }
 function resetGuideStep() { guideStats.grabMoved = 0; guideStats.zoom0 = S.userZoom; guideStats.rot = 0; guideStats.picked = false; guideStats.dragged = false; guide.ok = false; guide.okT = 0; }
-function startGuide() { guide.on = true; guide.i = 0; resetGuideStep(); placeGuide(true); guideMesh.visible = true; drawGuide(); }
+function startGuide() { guide.pinned = false; guide.on = true; guide.i = 0; resetGuideStep(); placeGuide(true); guideMesh.visible = true; drawGuide(); }
 function endGuide() { guide.on = false; guideMesh.visible = false; try { localStorage.setItem('biomol-guide-done', '1'); } catch (e) {} }
 function guideNext() { if (guide.i >= GUIDE.length - 1) return endGuide(); guide.i++; resetGuideStep(); drawGuide(); }
 function guidePress(x, y) { for (const b of guideBtns) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { b.act(); return true; } return false; }
@@ -1501,8 +1522,8 @@ function updateGuide(dt) {
   // lazy follow: come back into view when the user turns away
   const cam = renderer.xr.getCamera(); cam.getWorldPosition(headTmp);
   const look = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.getWorldQuaternion(qTmp)); const toCard = guideMesh.position.clone().sub(headTmp).normalize();
-  if (look.dot(toCard) < 0.62 || guide.follow) { guide.follow = look.dot(toCard) < 0.93; placeGuide(false); guideMesh.position.lerp(gTarget, 1 - Math.pow(0.05, dt)); }
-  guideMesh.lookAt(headTmp);
+  if (!guide.pinned && (look.dot(toCard) < 0.62 || guide.follow)) { guide.follow = look.dot(toCard) < 0.93; placeGuide(false); guideMesh.position.lerp(gTarget, 1 - Math.pow(0.05, dt)); }
+  if (!(panelDrag && panelDrag.obj === guideMesh)) guideMesh.lookAt(headTmp);
   const st = GUIDE[guide.i];
   if (st.check && !guide.ok && st.check()) { guide.ok = true; guide.okT = 0; drawGuide(); }
   if (guide.ok) { guide.okT += dt; if (guide.okT > 1.3) guideNext(); }
@@ -1545,6 +1566,7 @@ renderer.setAnimationLoop(() => {
       c.userData.line.scale.z = len;
       c.userData.dot.visible = !!ph || (ha !== null && S.tool !== 'grab'); if (ph) c.userData.dot.position.copy(ph.point); else if (ha !== null) c.userData.dot.position.copy(_hp);
       if (ph && ph.object === panelMesh && !gh) { const id = xrHover(ph.uv.x * PW, (1 - ph.uv.y) * PH); if (id !== c.userData.lastBtn && id) tick(c); c.userData.lastBtn = id; hoverOwner = c; } else { c.userData.lastBtn = null; if (hoverOwner === c) { hoverQuad.visible = false; hoverOwner = null; } }
+      pollBumper(c);
       const gp = c.userData.src.gamepad;
       if (gp && gp.axes && !(panelDrag && panelDrag.c === c)) {
         const ax = Math.abs(gp.axes[2] || 0) > Math.abs(gp.axes[0] || 0) ? gp.axes[2] : gp.axes[0];
