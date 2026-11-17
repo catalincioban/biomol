@@ -5132,8 +5132,8 @@ function drawRoomPad(y) {
 
 /* ============================== first-use guide (AR) ============================== */
 const GUIDE = [
-  { ro:'Bun venit! Molecula plutește în fața ta. Mergi puțin în jurul ei, ca în jurul unui obiect real.\nPoți muta acest card: ține trăgaciul pe el și mișcă mâna.',
-    en:'Welcome! The molecule floats in front of you. Walk around it a little, like around a real object.\nYou can move this card: hold the trigger on it and move your hand.' },
+  { ro:'Bun venit!\nMolecula plutește în fața ta. Mergi puțin în jurul ei, ca în jurul unui obiect real.\nPoți muta acest card: ține trăgaciul pe el și mișcă mâna.',
+    en:'Welcome!\nThe molecule floats in front of you. Walk around it a little, like around a real object.\nYou can move this card: hold the trigger on it and move your hand.' },
   { ro:'Apucă molecula.\n🎮 Țintește-o și ține apăsat trăgaciul (butonul mare). Mișcă mâna = o muți. Rotește încheietura = o întorci.\n✋ Sau bagă mâna în moleculă și prinde-o cu degetul mare și arătătorul.',
     en:'Grab the molecule.\n🎮 Point at it and hold the trigger (the big button). Move your hand = move it. Turn your wrist = turn it.\n✋ Or reach into the molecule and pinch it with thumb and index finger.', check: () => guideStats.grabMoved > 0.12 },
   { ro:'Mărește sau micșorează molecula.\n🎮 Glisează degetul mare pe touchpad, în sus sau în jos.\n✋ Sau prinde molecula cu ambele mâini și depărtează-le.',
@@ -5175,8 +5175,8 @@ function drawGuide() {
   gg.beginPath(); gg.roundRect(4, 4, GW - 8, GH - 8, 30); gg.fillStyle = 'rgba(6,12,24,0.92)'; gg.fill(); gg.lineWidth = 5; gg.strokeStyle = guide.ok ? '#7dff6a' : '#ffc27a'; gg.stroke();
   gg.textAlign = 'left'; gg.textBaseline = 'alphabetic'; gg.font = FONT('800', 38); gg.fillStyle = '#ffc27a'; gg.fillText('🧭 ' + t('guideTitle'), 36, 64);
   for (let k = 0; k < GUIDE.length; k++) { gg.beginPath(); gg.arc(GW - 50 - (GUIDE.length - 1 - k) * 30, 52, 9, 0, 7); gg.fillStyle = k < guide.i || (k === guide.i && guide.ok) ? '#7dff6a' : k === guide.i ? '#ffc27a' : 'rgba(143,179,201,0.35)'; gg.fill(); }
-  const lines = []; gg.font = FONT('500', 32); for (const para of tr(st).split('\n')) { let line = ''; for (const w of para.split(' ')) { const ts = line ? line + ' ' + w : w; if (gg.measureText(ts).width > GW - 80 && line) { lines.push(line); line = w; } else line = ts; } lines.push(line); }
-  lines.slice(0, 7).forEach((l, k) => { gg.font = FONT(k === 0 ? '700' : '500', 32); gg.fillStyle = k === 0 ? '#ffc27a' : C.text; gg.fillText(l, 38, 120 + k * 41); });
+  const lines = []; tr(st).split('\n').forEach((para, pi) => { gg.font = FONT(pi === 0 ? '700' : '500', 32); let line = ''; for (const w of para.split(' ')) { const ts = line ? line + ' ' + w : w; if (gg.measureText(ts).width > GW - 80 && line) { lines.push([line, pi === 0]); line = w; } else line = ts; } lines.push([line, pi === 0]); });
+  lines.slice(0, 7).forEach(([l, title], k) => { gg.font = FONT(title ? '700' : '500', 32); gg.fillStyle = title ? '#ffc27a' : C.text; gg.fillText(l, 38, 120 + k * 41 + (title ? 0 : 10)); });
   if (guide.ok) { gg.font = FONT('800', 40); gg.fillStyle = '#7dff6a'; gg.fillText(t('bravo'), 38, GH - 118); }
   const by = GH - 96, bw = (GW - 72 - 20) / 2;
   if (st.final) { gButton('gclose', 36 + bw + 20, by, bw, 70, t('close'), endGuide, true); }
