@@ -46,7 +46,7 @@ const TXT = {
     reset:'Resetează', recenter:'Adu aici', spin:'Rotire', ready:'Gata',
     xrAR:'Intră în AR', xrVR:'Intră în VR', xrNo:'AR disponibil pe Magic Leap 2 (WebXR)',
     hint:'Mouse: stânga = rotește, dreapta = mută, rotiță = zoom. Click pe un atom (fără să tragi) = folosește unealta aleasă.',
-    help:'Bumper: ține apăsat ca să apuci molecula (sau meniul ori ghidul, dacă țintești spre ele); ținut 1 s fără să miști controller-ul = aduci scena în fața ta. Touchpad: sus/jos = mărire, stânga/dreapta = rotire. Mâinile: apasă butoanele cu degetul; pinch în moleculă = o apuci și o rotești din încheietură; cu ambele mâini (sau controller + mâna liberă) o rotești, o muți și o mărești.',
+    help:'🎮 Trăgaci pe moleculă = o apuci (mișcă sau rotește mâna). Touchpad: sus/jos = mărire, stânga/dreapta = rotire. Trăgaci pe buton = apeși. Bara de sub meniu = muți meniul. „Adu aici” = molecula și meniul vin în fața ta.\n✋ Atingi butoanele cu arătătorul; pinch în moleculă = o apuci; pinch cu ambele mâini = rotești și mărești.',
     chain:'lanț', atom:'atom', protein:'proteină', nucleic:'acid nucleic', ligand:'ligand', ion:'ion', water:'apă',
     hydrophobic:'hidrofob', polar:'polar', basic:'bazic (+)', acidic:'acid (−)',
     atoms:'atomi', residues:'resturi', chains:'lanțuri', offline:'(merge și fără internet)',
@@ -74,7 +74,7 @@ const TXT = {
     reset:'Reset', recenter:'Bring here', spin:'Spin', ready:'Ready',
     xrAR:'Enter AR', xrVR:'Enter VR', xrNo:'AR available on Magic Leap 2 (WebXR)',
     hint:'Mouse: left = rotate, right = pan, wheel = zoom. Click an atom (without dragging) = use the selected tool.',
-    help:'Bumper: hold to grab the molecule (or the menu, if you point at it); hold it still for 1 s = bring the scene in front of you. Touchpad: up/down = scale, left/right = rotate. Hands: press buttons with your finger; pinch inside the molecule = grab it and turn your wrist to rotate; with both hands (or controller + free hand) you rotate, move and scale it.',
+    help:'🎮 Trigger on the molecule = grab it (move or turn your hand). Touchpad: up/down = zoom, left/right = rotate. Trigger on a button = press. Bar below the menu = move the menu. “Bring here” = molecule and menu come in front of you.\n✋ Touch buttons with your index finger; pinch inside the molecule = grab it; pinch with both hands = rotate and zoom.',
     chain:'chain', atom:'atom', protein:'protein', nucleic:'nucleic acid', ligand:'ligand', ion:'ion', water:'water',
     hydrophobic:'hydrophobic', polar:'polar', basic:'basic (+)', acidic:'acidic (−)',
     atoms:'atoms', residues:'residues', chains:'chains', offline:'(works offline)',
@@ -870,7 +870,7 @@ function drawPanel() {
   button('zout', 40, fy, fw, 76, '−', () => zoomBy(1 / 1.25), { fs: 44, bold: true });
   button('zin', 40 + (fw + 12), fy, fw, 76, '+', () => zoomBy(1.25), { fs: 44, bold: true });
   button('reset', 40 + 2 * (fw + 12), fy, fw, 76, t('reset'), () => { S.userZoom = 1; molRoot.quaternion.identity(); if (renderer.xr.isPresenting) placeInFront(); else resetView(); });
-  button('recenter', 40 + 3 * (fw + 12), fy, fw, 76, t('recenter'), () => placeInFront(), { disabled: !renderer.xr.isPresenting });
+  button('recenter', 40 + 3 * (fw + 12), fy, fw, 76, t('recenter'), () => { placeInFront(); guideStats.recentered = true; }, { disabled: !renderer.xr.isPresenting });
   button('spin', 40 + 4 * (fw + 12), fy, fw, 76, t('spin'), () => { S.spin = !S.spin; drawPanel(); }, { on: S.spin });
   panelTex.needsUpdate = true;
 }
@@ -951,7 +951,7 @@ function drawToolsTab(y) {
   if (measures.length) { yy += 16; section(t('measures'), yy); yy += 46;
     for (const m of measures.slice(-3)) { if (yy > PH - 360) break; g.font = FONT('700', 30); g.fillStyle = '#ffe14a'; g.fillText(m.text, 48, yy); const s = fitFont(m.names, PW - 260, 24, '500'); g.fillStyle = C.dim; g.fillText(m.names, 210, yy); yy += 42; } }
   const hy = PH - 318; for (const [k, l] of wrap(t('help'), PW - 100, FONT('500', 23)).entries()) { g.font = FONT('500', 23); g.fillStyle = C.dim; g.fillText(l, 48, hy + k * 29); }
-  if (renderer.xr.isPresenting) { g.font = FONT('500', 21); g.fillStyle = '#6f8fa5'; g.fillText(t('btnDiag') + ': ' + (btnDiag || '–'), 48, PH - 140); }
+
 }
 function drawLearnTab(y) {
   if (!lesson) {
@@ -1469,16 +1469,26 @@ function drawRoomPad(y) {
 
 /* ============================== first-use guide (AR) ============================== */
 const GUIDE = [
-  { ro:'Bun venit! Molecula plutește în fața ta. Mișcă-te puțin și privește-o din lateral, ca pe un obiect adevărat.', en:'Welcome! The molecule floats in front of you. Move around a little and look at it from the side, like a real object.' },
-  { ro:'Apucă molecula: ține apăsat bumperul (butonul lateral) și mișcă mâna. Cu mâinile: du mâna în moleculă, fă pinch (degetul mare + arătătorul) și rotește încheietura. Cu ambele mâini în pinch o rotești și o mărești.', en:'Grab the molecule: hold the bumper (side button) and move your hand. With hands: reach into the molecule, pinch (thumb + index finger) and turn your wrist. Pinch with both hands to rotate and scale it.', check: () => guideStats.grabMoved > 0.12 },
-  { ro:'Mărește sau micșorează: glisează pe touchpad în sus sau în jos. Poți folosi și butoanele + și − din meniu.', en:'Zoom in or out: swipe up or down on the touchpad. You can also use the + and − buttons in the menu.', check: () => Math.abs(Math.log(S.userZoom / guideStats.zoom0)) > 0.3 },
-  { ro:'Rotește molecula: glisează pe touchpad la stânga sau la dreapta.', en:'Rotate the molecule: swipe left or right on the touchpad.', check: () => guideStats.rot > 0.8 },
-  { ro:'Meniul: țintește un buton cu raza și apasă trăgaciul, sau atinge-l cu degetul arătător. Deschide fila „Unelte”.', en:'The menu: point at a button and pull the trigger, or touch it with your index finger. Open the “Tools” tab.', check: () => UI.tab === 'tools' },
-  { ro:'Alege „Info atom”, apoi țintește un atom și apasă trăgaciul. În meniu apar detaliile lui.', en:'Choose “Atom info”, then point at an atom and pull the trigger. Its details appear in the menu.', check: () => guideStats.picked },
-  { ro:'Mută meniul acolo unde îți e comod: trage de bara de sub el.', en:'Move the menu where it is comfortable: drag the bar below it.', check: () => guideStats.dragged },
-  { ro:'Gata! Acum știi tot ce trebuie. Deschide fila „Lecții” ca să începi o lecție.', en:'Done! You know everything you need. Open the “Lessons” tab to start a lesson.', final: true },
+  { ro:'Bun venit! Molecula plutește în fața ta. Mergi puțin în jurul ei, ca în jurul unui obiect real.\nPoți muta acest card: ține trăgaciul pe el și mișcă mâna.',
+    en:'Welcome! The molecule floats in front of you. Walk around it a little, like around a real object.\nYou can move this card: hold the trigger on it and move your hand.' },
+  { ro:'Apucă molecula.\n🎮 Țintește-o și ține apăsat trăgaciul (butonul mare). Mișcă mâna = o muți. Rotește încheietura = o întorci.\n✋ Sau bagă mâna în moleculă și prinde-o cu degetul mare și arătătorul.',
+    en:'Grab the molecule.\n🎮 Point at it and hold the trigger (the big button). Move your hand = move it. Turn your wrist = turn it.\n✋ Or reach into the molecule and pinch it with thumb and index finger.', check: () => guideStats.grabMoved > 0.12 },
+  { ro:'Mărește sau micșorează molecula.\n🎮 Glisează degetul mare pe touchpad, în sus sau în jos.\n✋ Sau prinde molecula cu ambele mâini și depărtează-le.',
+    en:'Make the molecule bigger or smaller.\n🎮 Slide your thumb up or down on the touchpad.\n✋ Or pinch the molecule with both hands and move them apart.', check: () => Math.abs(Math.log(S.userZoom / guideStats.zoom0)) > 0.3 },
+  { ro:'Rotește molecula.\n🎮 Glisează degetul mare pe touchpad, la stânga sau la dreapta.\n✋ Sau prinde-o cu ambele mâini și rotește-le, ca pe un volan.',
+    en:'Rotate the molecule.\n🎮 Slide your thumb left or right on the touchpad.\n✋ Or pinch it with both hands and turn them, like a steering wheel.', check: () => guideStats.rot > 0.8 },
+  { ro:'Folosește meniul.\n🎮 Țintește un buton și apasă trăgaciul.\n✋ Sau atinge butonul cu vârful arătătorului.\nDeschide acum fila „Unelte”.',
+    en:'Use the menu.\n🎮 Point at a button and press the trigger.\n✋ Or touch the button with your index fingertip.\nNow open the “Tools” tab.', check: () => UI.tab === 'tools' },
+  { ro:'Află ce este un atom.\nApasă „Info atom”, apoi țintește un atom și apasă trăgaciul. Numele și aminoacidul apar în meniu.',
+    en:'Find out what an atom is.\nPress “Atom info”, then point at an atom and press the trigger. Its name and amino acid appear in the menu.', check: () => guideStats.picked },
+  { ro:'Mută meniul unde îți e comod.\nȚintește bara de sub meniu, ține trăgaciul și mișcă mâna.\n(Trăgaciul apucă din nou molecula: am revenit la „Mută și rotește”.)',
+    en:'Move the menu where it is comfortable.\nPoint at the bar below the menu, hold the trigger and move your hand.\n(The trigger grabs the molecule again: back to “Move & rotate”.)', check: () => guideStats.dragged },
+  { ro:'Te-ai mutat prin sală?\nApasă „Adu aici” (jos în meniu): molecula și meniul vin în fața ta.',
+    en:'Moved around the room?\nPress “Bring here” (bottom of the menu): the molecule and the menu come in front of you.', check: () => guideStats.recentered },
+  { ro:'Gata! 🎉\nDeschide fila „Lecții” ca să începi o lecție.\nGhidul îl găsești oricând în „Unelte”.',
+    en:'Done! 🎉\nOpen the “Lessons” tab to start a lesson.\nYou can find this guide any time in “Tools”.', final: true },
 ];
-const guideStats = { grabMoved: 0, zoom0: 1, rot: 0, picked: false, dragged: false };
+const guideStats = { grabMoved: 0, zoom0: 1, rot: 0, picked: false, dragged: false, recentered: false };
 const guide = { on: false, i: 0, ok: false, okT: 0, hover: null, hoverOwner: null };
 const GW = 1024, GH = 520, GUIDE_W = 0.34, GUIDE_H = GUIDE_W * GH / GW;
 const guideCv = document.createElement('canvas'); guideCv.width = GW; guideCv.height = GH; const gg = guideCv.getContext('2d');
@@ -1487,10 +1497,10 @@ const guideMesh = new THREE.Mesh(new THREE.PlaneGeometry(GUIDE_W, GUIDE_H), new 
 guideMesh.visible = false; guideMesh.renderOrder = 22; scene.add(guideMesh);
 let guideBtns = [];
 function guideHit() { if (!guideMesh.visible) return null; return raycaster.intersectObject(guideMesh, false)[0] || null; }
-function resetGuideStep() { guideStats.grabMoved = 0; guideStats.zoom0 = S.userZoom; guideStats.rot = 0; guideStats.picked = false; guideStats.dragged = false; guide.ok = false; guide.okT = 0; }
+function resetGuideStep() { guideStats.grabMoved = 0; guideStats.zoom0 = S.userZoom; guideStats.rot = 0; guideStats.picked = false; guideStats.dragged = false; guideStats.recentered = false; guide.ok = false; guide.okT = 0; }
 function startGuide() { guide.pinned = false; guide.on = true; guide.i = 0; resetGuideStep(); placeGuide(true); guideMesh.visible = true; drawGuide(); }
 function endGuide() { guide.on = false; guideMesh.visible = false; try { localStorage.setItem('biomol-guide-done', '1'); } catch (e) {} }
-function guideNext() { if (guide.i >= GUIDE.length - 1) return endGuide(); guide.i++; resetGuideStep(); drawGuide(); }
+function guideNext() { if (guide.i >= GUIDE.length - 1) return endGuide(); if (guide.i === 5 && S.tool !== 'grab') { S.tool = 'grab'; picks = []; refreshOverlay(); } guide.i++; resetGuideStep(); drawGuide(); }
 function guidePress(x, y) { for (const b of guideBtns) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { b.act(); return true; } return false; }
 function guideHover(x, y) { let id = null; if (x !== null) for (const b of guideBtns) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) id = b.id; if (id !== guide.hover) { guide.hover = id; drawGuide(); } }
 function gButton(id, x, y, w, h, label, act, on) {
@@ -1502,8 +1512,8 @@ function drawGuide() {
   gg.beginPath(); gg.roundRect(4, 4, GW - 8, GH - 8, 30); gg.fillStyle = 'rgba(6,12,24,0.92)'; gg.fill(); gg.lineWidth = 5; gg.strokeStyle = guide.ok ? '#7dff6a' : '#ffc27a'; gg.stroke();
   gg.textAlign = 'left'; gg.textBaseline = 'alphabetic'; gg.font = FONT('800', 38); gg.fillStyle = '#ffc27a'; gg.fillText('🧭 ' + t('guideTitle'), 36, 64);
   for (let k = 0; k < GUIDE.length; k++) { gg.beginPath(); gg.arc(GW - 50 - (GUIDE.length - 1 - k) * 30, 52, 9, 0, 7); gg.fillStyle = k < guide.i || (k === guide.i && guide.ok) ? '#7dff6a' : k === guide.i ? '#ffc27a' : 'rgba(143,179,201,0.35)'; gg.fill(); }
-  const lines = []; gg.font = FONT('500', 34); { let line = ''; for (const w of tr(st).split(' ')) { const ts = line ? line + ' ' + w : w; if (gg.measureText(ts).width > GW - 80 && line) { lines.push(line); line = w; } else line = ts; } lines.push(line); }
-  lines.slice(0, 6).forEach((l, k) => { gg.font = FONT('500', 34); gg.fillStyle = C.text; gg.fillText(l, 38, 128 + k * 46); });
+  const lines = []; gg.font = FONT('500', 32); for (const para of tr(st).split('\n')) { let line = ''; for (const w of para.split(' ')) { const ts = line ? line + ' ' + w : w; if (gg.measureText(ts).width > GW - 80 && line) { lines.push(line); line = w; } else line = ts; } lines.push(line); }
+  lines.slice(0, 7).forEach((l, k) => { gg.font = FONT(k === 0 ? '700' : '500', 32); gg.fillStyle = k === 0 ? '#ffc27a' : C.text; gg.fillText(l, 38, 120 + k * 41); });
   if (guide.ok) { gg.font = FONT('800', 40); gg.fillStyle = '#7dff6a'; gg.fillText(t('bravo'), 38, GH - 118); }
   const by = GH - 96, bw = (GW - 72 - 20) / 2;
   if (st.final) { gButton('gclose', 36 + bw + 20, by, bw, 70, t('close'), endGuide, true); }
